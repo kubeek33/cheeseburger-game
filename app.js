@@ -400,7 +400,8 @@ const STRINGS = {
     playedFoodTruck: (name, kept) => `🚚 ${name} грає Фудтрак і забирає ${kept} інгредієнт(и).`,
     playedDelivery: (name, ing, total) => `📦 ${name} грає Кур'єра: оголосив "${ing}" і отримав ${total} карт(и).`,
     playedInspector: (name, target) => `🕵️ ${name} грає Санінспектора проти ${target} і бере 2 карти.`,
-    playedShoplifter: (name, count) => `🥷 ${name} грає Крадія і краде по 1 карті у ${count} гравців.`,
+    playedShoplifter: (name, victims) => `🥷 ${name} грає Крадія і краде по 1 карті у: ${victims}.`,
+    playedShoplifterNone: (name) => `🥷 ${name} грає Крадія, але ні в кого немає карт для крадіжки.`,
     playedFly: (name, target) => `🪰 ${name} підкидає муху на чізбургер гравця ${target}.`,
     playedSwatter: (name) => `🏏 ${name} вбиває муху на своєму чізбургері!`,
     playedGust: (name, target) => `🌬️ ${name} здуває муху на чізбургер гравця ${target}.`,
@@ -551,7 +552,8 @@ const STRINGS = {
     playedFoodTruck: (name, kept) => `🚚 ${name} plays Food Truck and takes ${kept} ingredient(s).`,
     playedDelivery: (name, ing, total) => `📦 ${name} plays Delivery Guy: called "${ing}" and received ${total} card(s).`,
     playedInspector: (name, target) => `🕵️ ${name} plays Health Inspector on ${target} and takes 2 cards.`,
-    playedShoplifter: (name, count) => `🥷 ${name} plays Shoplifter and steals a card from ${count} player(s).`,
+    playedShoplifter: (name, victims) => `🥷 ${name} plays Shoplifter and steals a card from: ${victims}.`,
+    playedShoplifterNone: (name) => `🥷 ${name} plays Shoplifter, but no one has any cards to steal.`,
     playedFly: (name, target) => `🪰 ${name} tosses a fly onto ${target}'s burger.`,
     playedSwatter: (name) => `🏏 ${name} swats the fly off their burger!`,
     playedGust: (name, target) => `🌬️ ${name} blows the fly onto ${target}'s burger.`,
@@ -693,8 +695,8 @@ function rulesHtml() {
   `;
 }
 
-function openRules() { rulesOpen = true; render(); }
-function closeRules() { rulesOpen = false; render(); }
+function openRules() { rulesOpen = true; renderLocal(); }
+function closeRules() { rulesOpen = false; renderLocal(); }
 function renderRulesModal() {
   if (!rulesOpen) return '';
   return `
@@ -908,6 +910,11 @@ function onlineLeaveRoom() {
 
 let G = null;
 let rulesOpen = false;
+/* Per-device UI state that must NEVER be synced to other online players —
+   which modal is open, hand view mode, main menu. In online mode the whole
+   of G gets pushed to Firebase and broadcast to every connected client, so
+   anything that lives on G is effectively shared; this stays purely local. */
+let LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false };
 
 function currentPlayer() { return G.players[G.currentPlayerIndex]; }
 function otherPlayers() { return G.players.filter(p => p.id !== currentPlayer().id); }
@@ -921,11 +928,11 @@ function newGame(names, options) {
   const deck = shuffle(buildDeck());
   const burgerPile = shuffle(buildBurgerPile());
   const players = names.map((name, i) => ({ id: i, name, hand: [], burgers: [], isBot: !!isBotFlags[i], difficulty }));
+  LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false };
   G = {
     players, drawPile: deck, discardPile: [], burgerPile,
     currentPlayerIndex: 0, movesLeft: 3,
     log: [], phase: 'pass', passTarget: 0, passPurpose: 'startTurn',
-    ui: { modal: null, handGrouped: false },
     tradeState: null, pendingReveal: null, winner: null, endReason: null,
     newCardIds: new Set(), newCardTimer: null,
     vsBots, online: !!options.online,
@@ -1006,7 +1013,7 @@ function goToPassCover(playerIndex, purpose) {
   G.phase = 'pass';
   G.passTarget = playerIndex;
   G.passPurpose = purpose;
-  G.ui.modal = null;
+  LOCAL_UI.modal = null;
   render();
 }
 
@@ -1065,7 +1072,7 @@ function doMakeClassic() {
 
 function doMakeGrandma(overrideKinds) {
   const p = currentPlayer();
-  const selectedKinds = overrideKinds || (G.ui.modal && G.ui.modal.selectedKinds);
+  const selectedKinds = overrideKinds || (LOCAL_UI.modal && LOCAL_UI.modal.selectedKinds);
   if (!selectedKinds || G.movesLeft <= 0) return;
   if (new Set(selectedKinds).size !== 3) return;
   const gcard = removeFromHand(p, c => c.type === 'action' && c.kind === 'grandma');
@@ -1079,7 +1086,7 @@ function doMakeGrandma(overrideKinds) {
   G.movesLeft--;
   addLog(t('madeGrandma', p.name));
   triggerEffect('🍔✨', t('fxBurger'), p.id);
-  closeModal();
+  LOCAL_UI.modal = null;
   afterBurgerMade();
 }
 
@@ -1124,20 +1131,20 @@ function maybeEndByDepletion() {
 
 function openTradeModal() {
   if (G.movesLeft <= 0) return;
-  G.ui.modal = { type: 'tradeTarget' };
-  render();
+  LOCAL_UI.modal = { type: 'tradeTarget' };
+  renderLocal();
 }
 function pickTradeTarget(targetId) {
-  G.ui.modal = { type: 'tradeOffer', targetId, offeredCardId: null, requestedKind: 'any' };
-  render();
+  LOCAL_UI.modal = { type: 'tradeOffer', targetId, offeredCardId: null, requestedKind: 'any' };
+  renderLocal();
 }
 function selectOfferCard(cardId) {
-  G.ui.modal.offeredCardId = cardId;
-  render();
+  LOCAL_UI.modal.offeredCardId = cardId;
+  renderLocal();
 }
 function selectRequestedKind(kind) {
-  G.ui.modal.requestedKind = kind;
-  render();
+  LOCAL_UI.modal.requestedKind = kind;
+  renderLocal();
 }
 /* kind is either an ingredient kind, 'action' (any action card), or 'any' (no preference) */
 function cardMatchesKind(c, kind) {
@@ -1152,10 +1159,10 @@ function describeRequestedKind(kind) {
   return `${meta.ic} ${mName(meta)}`;
 }
 function confirmOffer() {
-  const { targetId, offeredCardId, requestedKind } = G.ui.modal;
+  const { targetId, offeredCardId, requestedKind } = LOCAL_UI.modal;
   if (!offeredCardId) return;
   G.tradeState = { fromId: currentPlayer().id, targetId, offeredCardId, requestedKind: requestedKind || 'any', status: 'pending' };
-  G.ui.modal = null;
+  LOCAL_UI.modal = null;
   goToPassCover(targetId, 'tradeRespond');
 }
 function respondTrade(responseCardId) {
@@ -1207,14 +1214,14 @@ function playFoodTruck() {
   markNewCards(keptIds);
   scheduleNewCardExpiry();
   G.pendingReveal = { title: t('foodTruckRevealTitle'), cards: revealed };
-  G.ui.modal = null;
+  LOCAL_UI.modal = null;
   render();
 }
 
 function openDeliveryModal() {
   if (G.movesLeft <= 0 || !currentPlayer().hand.some(c => c.type === 'action' && c.kind === 'delivery')) return;
-  G.ui.modal = { type: 'delivery' };
-  render();
+  LOCAL_UI.modal = { type: 'delivery' };
+  renderLocal();
 }
 function playDelivery(kind) {
   const p = currentPlayer();
@@ -1235,28 +1242,29 @@ function playDelivery(kind) {
   triggerEffect('📦', t('fxDelivery'), p.id);
   markNewCards(gainedIds);
   scheduleNewCardExpiry();
-  closeModal();
+  LOCAL_UI.modal = null;
+  render();
 }
 
 function openInspectorModal() {
   if (G.movesLeft <= 0 || !currentPlayer().hand.some(c => c.type === 'action' && c.kind === 'inspector')) return;
-  G.ui.modal = { type: 'inspectorTarget' };
-  render();
+  LOCAL_UI.modal = { type: 'inspectorTarget' };
+  renderLocal();
 }
 function pickInspectorTarget(targetId) {
-  G.ui.modal = { type: 'inspectorView', targetId, picked: [] };
-  render();
+  LOCAL_UI.modal = { type: 'inspectorView', targetId, picked: [] };
+  renderLocal();
 }
 function toggleInspectorPick(cardId) {
-  const m = G.ui.modal;
+  const m = LOCAL_UI.modal;
   const idx = m.picked.indexOf(cardId);
   if (idx >= 0) m.picked.splice(idx, 1);
   else if (m.picked.length < 2) m.picked.push(cardId);
-  render();
+  renderLocal();
 }
 function confirmInspector() {
   const p = currentPlayer();
-  const m = G.ui.modal;
+  const m = LOCAL_UI.modal;
   if (m.picked.length !== 2) return;
   const card = removeFromHand(p, c => c.type === 'action' && c.kind === 'inspector');
   G.discardPile.push(card);
@@ -1271,7 +1279,8 @@ function confirmInspector() {
   triggerEffect('🕵️', t('fxInspect'), target.id);
   markNewCards(taken.map(c => c.id));
   scheduleNewCardExpiry();
-  closeModal();
+  LOCAL_UI.modal = null;
+  render();
 }
 
 function playShoplifter() {
@@ -1280,18 +1289,20 @@ function playShoplifter() {
   const card = removeFromHand(p, c => c.type === 'action' && c.kind === 'shoplifter');
   if (!card) return;
   G.discardPile.push(card);
-  let count = 0;
   const stolenIds = [];
+  const victimNames = [];
   otherPlayers().forEach(other => {
     if (other.hand.length === 0) return;
     const idx = Math.floor(Math.random() * other.hand.length);
     const [stolen] = other.hand.splice(idx, 1);
     p.hand.push(stolen);
     stolenIds.push(stolen.id);
-    count++;
+    victimNames.push(other.name);
   });
   G.movesLeft--;
-  addLog(t('playedShoplifter', p.name, count));
+  addLog(victimNames.length > 0
+    ? t('playedShoplifter', p.name, victimNames.join(', '))
+    : t('playedShoplifterNone', p.name));
   triggerEffect('🥷', t('fxSteal'), p.id);
   markNewCards(stolenIds);
   scheduleNewCardExpiry();
@@ -1302,8 +1313,8 @@ function openFlyModal() {
   if (G.movesLeft <= 0 || !currentPlayer().hand.some(c => c.type === 'action' && c.kind === 'fly')) return;
   const eligible = otherPlayers().filter(pl => pl.burgers.length > 0);
   if (eligible.length === 0) return;
-  G.ui.modal = { type: 'flyTarget' };
-  render();
+  LOCAL_UI.modal = { type: 'flyTarget' };
+  renderLocal();
 }
 function playFly(targetId) {
   const p = currentPlayer();
@@ -1316,7 +1327,8 @@ function playFly(targetId) {
   G.movesLeft--;
   addLog(t('playedFly', p.name, target.name));
   triggerEffect('🪰', t('fxFly'), target.id);
-  closeModal();
+  LOCAL_UI.modal = null;
+  render();
 }
 
 function openSwatterModal() {
@@ -1344,8 +1356,8 @@ function openGustModal() {
   if (G.movesLeft <= 0) return;
   if (!p.hand.some(c => c.type === 'action' && c.kind === 'gust')) return;
   if (!p.burgers.some(b => b.fly)) return;
-  G.ui.modal = { type: 'gustTarget' };
-  render();
+  LOCAL_UI.modal = { type: 'gustTarget' };
+  renderLocal();
 }
 function playGust(targetId) {
   const p = currentPlayer();
@@ -1361,30 +1373,38 @@ function playGust(targetId) {
   G.movesLeft--;
   addLog(t('playedGust', p.name, target.name));
   triggerEffect('🌬️', t('fxGust'), target.id);
-  closeModal();
+  LOCAL_UI.modal = null;
+  render();
 }
 
 function openMakeBurgerModal() {
   const p = currentPlayer();
   if (G.movesLeft <= 0) return;
-  G.ui.modal = { type: 'makeBurger', selectedKinds: [] };
-  render();
+  LOCAL_UI.modal = { type: 'makeBurger', selectedKinds: [] };
+  renderLocal();
 }
 function openGrandmaModal() {
   const p = currentPlayer();
   if (G.movesLeft <= 0 || !hasGrandmaCard(p) || distinctIngredientKinds(p).length < 3) return;
-  G.ui.modal = { type: 'makeBurger', selectedKinds: [], direct: 'grandma' };
-  render();
+  LOCAL_UI.modal = { type: 'makeBurger', selectedKinds: [], direct: 'grandma' };
+  renderLocal();
 }
 function toggleGrandmaKind(kind) {
-  const m = G.ui.modal;
+  const m = LOCAL_UI.modal;
   const idx = m.selectedKinds.indexOf(kind);
   if (idx >= 0) m.selectedKinds.splice(idx, 1);
   else if (m.selectedKinds.length < 3) m.selectedKinds.push(kind);
-  render();
+  renderLocal();
 }
 
-function closeModal() { G.ui.modal = null; G.pendingReveal = null; render(); }
+/* Cancel/close only — mutating actions (delivery, inspector, fly, gust,
+   grandma's recipe) clear LOCAL_UI.modal themselves and sync via render(),
+   since closing here must never be responsible for pushing their mutation. */
+function closeModal() {
+  LOCAL_UI.modal = null;
+  if (G.pendingReveal) { G.pendingReveal = null; render(); }
+  else { renderLocal(); }
+}
 
 /* ---------------- Bot AI ---------------- */
 
@@ -1575,18 +1595,18 @@ function botTryTradeWithBot(bot) {
 function toggleSfx() {
   const nowMuted = Sfx.toggleMuted();
   if (!nowMuted) Sfx.play('click');
-  render();
+  renderLocal();
 }
 
 /* Settings modal is independent of G (must also work on the setup screen,
    before a game exists), so it's its own bit of state and doesn't route
-   through G.ui.modal / closeModal() like every other modal here. */
+   through LOCAL_UI.modal / closeModal() like every other modal here. */
 let settingsOpen = false;
-function openSettingsModal() { settingsOpen = true; render(); }
-function closeSettingsModal() { settingsOpen = false; render(); }
+function openSettingsModal() { settingsOpen = true; renderLocal(); }
+function closeSettingsModal() { settingsOpen = false; renderLocal(); }
 function toggleMusicEnabled() {
   const nowEnabled = Music.toggleEnabled();
-  render();
+  renderLocal();
   return nowEnabled;
 }
 function setMusicVolume(v) { Music.setVolume(Number(v) / 100); }
@@ -1610,9 +1630,9 @@ function renderSettingsModal() {
     </div>
   `;
 }
-function openMainMenu() { G.ui.mainMenuOpen = 'menu'; render(); }
-function closeMainMenu() { if (G) { G.ui.mainMenuOpen = false; render(); } }
-function askConfirm(kind) { G.ui.mainMenuOpen = kind; render(); } // 'confirmRestart' | 'confirmExit'
+function openMainMenu() { LOCAL_UI.mainMenuOpen = 'menu'; renderLocal(); }
+function closeMainMenu() { LOCAL_UI.mainMenuOpen = false; renderLocal(); }
+function askConfirm(kind) { LOCAL_UI.mainMenuOpen = kind; renderLocal(); } // 'confirmRestart' | 'confirmExit'
 function restartSameGame() {
   if (G.online && !ONLINE.isHost) return; // only the host may reshuffle/redeal
   const names = G.players.map(p => p.name);
@@ -1624,14 +1644,15 @@ function restartSameGame() {
 function exitToSetup() {
   if (ONLINE) onlineLeaveRoom();
   G = null;
+  LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false };
   render();
 }
 function menuButtonHtml() {
   return `<button class="menu-fab" onclick="openMainMenu()" title="${t('menuTooltip')}">☰</button>`;
 }
 function renderMainMenuModal() {
-  if (!G || !G.ui.mainMenuOpen) return '';
-  const state = G.ui.mainMenuOpen;
+  if (!G || !LOCAL_UI.mainMenuOpen) return '';
+  const state = LOCAL_UI.mainMenuOpen;
 
   if (state === 'confirmRestart') {
     return wrapModal(t('confirmRestartTitle'), `
@@ -1684,6 +1705,14 @@ const app = document.getElementById('app');
    this one). In hotseat/bots mode it renders straight away as before. */
 function render() {
   if (ONLINE && ONLINE.syncing) { pushStateToFirebase(); return; }
+  renderLocal();
+}
+
+/* For UI-only changes that never touch shared game state (opening/closing a
+   modal, picking an option before confirming, toggling hand view) — renders
+   immediately on this device without waiting on a Firebase round-trip, and
+   without pushing anything for other connected players to see. */
+function renderLocal() {
   doLocalRender();
   if (settingsOpen) app.insertAdjacentHTML('beforeend', renderSettingsModal());
 }
@@ -2108,16 +2137,16 @@ function renderGame() {
 
       <div class="hand-label-row">
         <div class="hand-label">${t('handLabel', p.hand.length)}</div>
-        <button class="btn-sm btn-secondary" onclick="toggleHandGrouped()">${G.ui.handGrouped ? t('fanBtn') : t('groupBtn')}</button>
+        <button class="btn-sm btn-secondary" onclick="toggleHandGrouped()">${LOCAL_UI.handGrouped ? t('fanBtn') : t('groupBtn')}</button>
       </div>
-      ${G.ui.handGrouped ? renderGroupedHand(p) : renderFanHand(p)}
+      ${LOCAL_UI.handGrouped ? renderGroupedHand(p) : renderFanHand(p)}
     </div>
     ${renderModal()}
     ${renderPendingReveal()}
     ${renderMainMenuModal()}
     ${renderRulesModal()}
   `;
-  if (!G.ui.handGrouped) setupHandDrag();
+  if (!LOCAL_UI.handGrouped) setupHandDrag();
 }
 
 /* Online: everyone sees the same table, but only the active player's
@@ -2152,21 +2181,21 @@ function renderOnlineGame() {
 
       <div class="hand-label-row">
         <div class="hand-label">${t('handLabel', me.hand.length)}</div>
-        <button class="btn-sm btn-secondary" onclick="toggleHandGrouped()">${G.ui.handGrouped ? t('fanBtn') : t('groupBtn')}</button>
+        <button class="btn-sm btn-secondary" onclick="toggleHandGrouped()">${LOCAL_UI.handGrouped ? t('fanBtn') : t('groupBtn')}</button>
       </div>
-      ${G.ui.handGrouped ? renderGroupedHand(me, !isMyTurn) : renderFanHand(me, !isMyTurn)}
+      ${LOCAL_UI.handGrouped ? renderGroupedHand(me, !isMyTurn) : renderFanHand(me, !isMyTurn)}
     </div>
     ${isMyTurn ? renderModal() : ''}
     ${isMyTurn ? renderPendingReveal() : ''}
     ${renderMainMenuModal()}
     ${renderRulesModal()}
   `;
-  if (isMyTurn && !G.ui.handGrouped) setupHandDrag();
+  if (isMyTurn && !LOCAL_UI.handGrouped) setupHandDrag();
 }
 
 function toggleHandGrouped() {
-  G.ui.handGrouped = !G.ui.handGrouped;
-  render();
+  LOCAL_UI.handGrouped = !LOCAL_UI.handGrouped;
+  renderLocal();
 }
 
 function renderFanHand(p, forceDisabled) {
@@ -2439,7 +2468,7 @@ function renderPendingReveal() {
 }
 
 function renderModal() {
-  const m = G.ui.modal;
+  const m = LOCAL_UI.modal;
   if (!m) return '';
   const p = currentPlayer();
 
