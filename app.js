@@ -96,8 +96,29 @@ const STRINGS = {
     langToggle: 'EN',
     modeHotseat: '👥 З друзями',
     modeBots: '🤖 Проти ботів',
+    modeOnline: '🌐 Онлайн',
     yourName: "Твоє ім'я",
     yourNamePlaceholder: "Твоє ім'я",
+    createRoomBtn: '🆕 Створити кімнату',
+    orJoinLabel: 'або приєднайся за кодом',
+    roomCodePlaceholder: 'КОД КІМНАТИ',
+    joinRoomBtn: '🚪 Приєднатися',
+    onlineNotConfigured: 'Онлайн-режим ще не налаштовано (бракує Firebase-конфігурації).',
+    onlineConnectError: 'Не вдалося з\'єднатися. Спробуй ще раз.',
+    onlineRoomNotFound: 'Кімнату з таким кодом не знайдено.',
+    onlineRoomStarted: 'Ця гра вже розпочалася.',
+    onlineRoomFull: `У кімнаті вже максимум гравців (${MAX_PLAYERS}).`,
+    roomCodeLabel: 'Код кімнати — поділись ним з друзями',
+    copyLink: '🔗 Скопіювати посилання',
+    playersInRoom: (n) => `Гравці в кімнаті (${n})`,
+    startOnlineGame: 'Почати гру 🍔',
+    waitingForMorePlayers: `Чекаємо ще гравців (мінімум ${MIN_PLAYERS})...`,
+    waitingForHost: 'Очікуємо, поки хост розпочне гру...',
+    leaveRoom: '🚪 Вийти з кімнати',
+    otherTurn: (name) => `⏳ Хід гравця ${name}`,
+    notYourTurn: 'Зараз не твій хід',
+    waitingForTradeResponse: (target, from) => `⏳ ${target} обмірковує пропозицію обміну від ${from}...`,
+    waitingTitle: 'Очікування',
     howManyTotal: 'Скільки гравців разом з тобою?',
     difficultyLabel: 'Рівень складності ботів',
     diffEasy: '😌 Легкий',
@@ -212,8 +233,29 @@ const STRINGS = {
     langToggle: 'UA',
     modeHotseat: '👥 With friends',
     modeBots: '🤖 Vs bots',
+    modeOnline: '🌐 Online',
     yourName: 'Your name',
     yourNamePlaceholder: 'Your name',
+    createRoomBtn: '🆕 Create room',
+    orJoinLabel: 'or join with a code',
+    roomCodePlaceholder: 'ROOM CODE',
+    joinRoomBtn: '🚪 Join',
+    onlineNotConfigured: "Online mode isn't set up yet (missing Firebase config).",
+    onlineConnectError: 'Could not connect. Please try again.',
+    onlineRoomNotFound: 'No room found with that code.',
+    onlineRoomStarted: 'That game has already started.',
+    onlineRoomFull: `The room already has the maximum of ${MAX_PLAYERS} players.`,
+    roomCodeLabel: 'Room code — share it with your friends',
+    copyLink: '🔗 Copy invite link',
+    playersInRoom: (n) => `Players in room (${n})`,
+    startOnlineGame: 'Start Game 🍔',
+    waitingForMorePlayers: `Waiting for more players (at least ${MIN_PLAYERS})...`,
+    waitingForHost: 'Waiting for the host to start the game...',
+    leaveRoom: '🚪 Leave room',
+    otherTurn: (name) => `⏳ ${name}'s turn`,
+    notYourTurn: "It's not your turn",
+    waitingForTradeResponse: (target, from) => `⏳ ${target} is considering a trade offer from ${from}...`,
+    waitingTitle: 'Waiting',
     howManyTotal: 'How many players total, including you?',
     difficultyLabel: 'Bot difficulty',
     diffEasy: '😌 Easy',
@@ -488,6 +530,130 @@ function buildBurgerPile() {
   return cards;
 }
 
+/* ---------------- Online multiplayer (Firebase Realtime Database) ----------------
+   Fill this in with your own free Firebase project's config (Project settings
+   → General → Your apps → SDK setup and configuration). These values are
+   meant to be public/client-side for Firebase — that's normal, access is
+   controlled by database security rules, not by hiding this object. */
+const FIREBASE_CONFIG = {
+  apiKey: 'PASTE_YOUR_API_KEY',
+  authDomain: 'PASTE_YOUR_PROJECT.firebaseapp.com',
+  databaseURL: 'https://PASTE_YOUR_PROJECT-default-rtdb.firebaseio.com',
+  projectId: 'PASTE_YOUR_PROJECT',
+};
+
+let ONLINE = null; // { code, myId, isHost, roomRef, roomData, syncing }
+let fbDb = null;
+
+function firebaseReady() {
+  return typeof firebase !== 'undefined' && FIREBASE_CONFIG.apiKey !== 'PASTE_YOUR_API_KEY';
+}
+function ensureFirebase() {
+  if (fbDb) return fbDb;
+  firebase.initializeApp(FIREBASE_CONFIG);
+  fbDb = firebase.database();
+  return fbDb;
+}
+
+function genRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I — easy to read aloud
+  let s = '';
+  for (let i = 0; i < 5; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+
+/* Firebase JSON can't hold a Set — swap it for a plain array on the way out
+   and back on the way in. Local-only timer handles never leave this device. */
+function serializeState(state) {
+  const copy = Object.assign({}, state);
+  copy.newCardIds = Array.from(state.newCardIds || []);
+  delete copy.newCardTimer;
+  delete copy.effectTimer;
+  return copy;
+}
+function deserializeState(data) {
+  const copy = Object.assign({}, data);
+  copy.newCardIds = new Set(data.newCardIds || []);
+  copy.newCardTimer = null;
+  copy.effectTimer = null;
+  return copy;
+}
+
+function pushStateToFirebase() {
+  if (!ONLINE || !ONLINE.roomRef || !G) return;
+  ONLINE.roomRef.child('state').set(serializeState(G));
+}
+
+function onlineCreateRoom(name) {
+  if (!firebaseReady()) { setupState.onlineError = t('onlineNotConfigured'); renderSetup(); return; }
+  const db = ensureFirebase();
+  const code = genRoomCode();
+  const roomRef = db.ref('rooms/' + code);
+  roomRef.set({ players: [{ id: 0, name }], started: false, state: null, createdAt: Date.now() })
+    .then(() => {
+      ONLINE = { code, myId: 0, isHost: true, roomRef, roomData: null, syncing: false };
+      subscribeOnlineRoom();
+    })
+    .catch(() => { setupState.onlineError = t('onlineConnectError'); renderSetup(); });
+}
+
+function onlineJoinRoom(codeRaw, name) {
+  if (!firebaseReady()) { setupState.onlineError = t('onlineNotConfigured'); renderSetup(); return; }
+  const code = codeRaw.trim().toUpperCase();
+  if (!code) return;
+  const db = ensureFirebase();
+  const roomRef = db.ref('rooms/' + code);
+  roomRef.once('value').then(snap => {
+    const data = snap.val();
+    if (!data) { setupState.onlineError = t('onlineRoomNotFound'); renderSetup(); return; }
+    if (data.started) { setupState.onlineError = t('onlineRoomStarted'); renderSetup(); return; }
+    let assignedId = null, tooFull = false;
+    roomRef.child('players').transaction(players => {
+      players = players || [];
+      if (players.length >= MAX_PLAYERS) { tooFull = true; return; }
+      assignedId = players.length;
+      players.push({ id: players.length, name });
+      return players;
+    }, (error, committed) => {
+      if (tooFull) { setupState.onlineError = t('onlineRoomFull'); renderSetup(); return; }
+      if (error || !committed) { setupState.onlineError = t('onlineConnectError'); renderSetup(); return; }
+      ONLINE = { code, myId: assignedId, isHost: false, roomRef, roomData: null, syncing: false };
+      subscribeOnlineRoom();
+    });
+  });
+}
+
+function subscribeOnlineRoom() {
+  ONLINE.roomRef.on('value', snap => {
+    const data = snap.val();
+    if (!data || !ONLINE) return;
+    ONLINE.roomData = data;
+    if (data.started && data.state) {
+      ONLINE.syncing = true;
+      G = deserializeState(data.state);
+      G.online = true;
+    } else {
+      G = null;
+    }
+    doLocalRender();
+  });
+}
+
+function onlineStartGame() {
+  if (!ONLINE || !ONLINE.isHost || !ONLINE.roomData) return;
+  const players = ONLINE.roomData.players;
+  if (players.length < MIN_PLAYERS) return;
+  const names = players.map(p => p.name);
+  ONLINE.syncing = true;
+  newGame(names, { online: true });
+  ONLINE.roomRef.child('started').set(true);
+}
+
+function onlineLeaveRoom() {
+  if (ONLINE && ONLINE.roomRef) ONLINE.roomRef.off();
+  ONLINE = null;
+}
+
 /* ---------------- Global state ---------------- */
 
 let G = null;
@@ -512,7 +678,7 @@ function newGame(names, options) {
     ui: { modal: null, handGrouped: false },
     tradeState: null, pendingReveal: null, winner: null, endReason: null,
     newCardIds: new Set(), newCardTimer: null,
-    vsBots,
+    vsBots, online: !!options.online,
   };
   for (let i = 0; i < 7; i++) players.forEach(p => p.hand.push(G.drawPile.pop()));
   addLog(t('gameStarted'));
@@ -1137,12 +1303,15 @@ function openMainMenu() { G.ui.mainMenuOpen = 'menu'; render(); }
 function closeMainMenu() { if (G) { G.ui.mainMenuOpen = false; render(); } }
 function askConfirm(kind) { G.ui.mainMenuOpen = kind; render(); } // 'confirmRestart' | 'confirmExit'
 function restartSameGame() {
+  if (G.online && !ONLINE.isHost) return; // only the host may reshuffle/redeal
   const names = G.players.map(p => p.name);
   const isBotFlags = G.players.map(p => p.isBot);
   const difficulty = G.players[0] && G.players[0].difficulty;
-  newGame(names, { vsBots: G.vsBots, isBotFlags, difficulty });
+  if (G.online) ONLINE.syncing = true;
+  newGame(names, { vsBots: G.vsBots, isBotFlags, difficulty, online: G.online });
 }
 function exitToSetup() {
+  if (ONLINE) onlineLeaveRoom();
   G = null;
   render();
 }
@@ -1172,12 +1341,13 @@ function renderMainMenuModal() {
     `, false);
   }
 
+  const canRestart = !G.online || (ONLINE && ONLINE.isHost);
   return wrapModal(t('menuTitle'), `
     <div class="choice-list">
       <button class="choice-btn" onclick="closeMainMenu(); openRules();">${t('menuRules')}</button>
       <button class="choice-btn" onclick="toggleLang()">${t('menuLang')}</button>
-      <button class="choice-btn" onclick="askConfirm('confirmRestart')">${t('menuRestart')}</button>
-      <button class="choice-btn" onclick="askConfirm('confirmExit')">${t('menuExit')}</button>
+      ${canRestart ? `<button class="choice-btn" onclick="askConfirm('confirmRestart')">${t('menuRestart')}</button>` : ''}
+      <button class="choice-btn" onclick="askConfirm('confirmExit')">${G.online ? t('leaveRoom') : t('menuExit')}</button>
     </div>
     <div class="footer-actions"><button class="btn-secondary" onclick="closeMainMenu()">${t('close')}</button></div>
   `, false);
@@ -1195,22 +1365,45 @@ function endTurn() {
 
 const app = document.getElementById('app');
 
+/* render() is the entry point every action calls after mutating G. In
+   online mode there's nothing to render locally-only — instead the new
+   state is pushed to Firebase, and the actual screen update happens when
+   the realtime listener fires back (for every connected device, including
+   this one). In hotseat/bots mode it renders straight away as before. */
 function render() {
-  if (!G) { renderSetup(); return; }
+  if (ONLINE && ONLINE.syncing) { pushStateToFirebase(); return; }
+  doLocalRender();
+}
+
+function doLocalRender() {
+  if (!G) {
+    if (ONLINE) { renderOnlineLobby(); return; }
+    renderSetup(); return;
+  }
   if (G.phase === 'end') { renderEnd(); return; }
   if (G.phase === 'pass') {
     if (G.vsBots) { resolvePassAutomatically(); return; }
+    if (G.online) {
+      // Only the host resolves this transition (draws cards, advances the
+      // turn) — every device's listener sees the same 'pass' snapshot, so
+      // if all of them ran the resolver they'd race and double-draw.
+      if (ONLINE.isHost) { resolvePassAutomatically(); return; }
+      renderOnlineWaiting(t('waitingTitle')); return;
+    }
     renderPassCover(); return;
   }
   if (G.phase === 'tradeRespond') {
     if (G.vsBots) { resolveTradeRespondAutomatically(); return; }
+    if (G.online) { renderOnlineTradeRespond(); return; }
     renderTradeRespond(); return;
   }
+  if (G.online) { renderOnlineGame(); return; }
   renderGame();
 }
 
-/* In solo-vs-bots mode there's only one human, so hand-privacy "pass the
-   device" screens are pointless — resolve them instantly instead. */
+/* In solo-vs-bots mode there's only one human, and in online mode every
+   player already has their own device, so hand-privacy "pass the device"
+   screens are pointless either way — resolve them instantly instead. */
 function resolvePassAutomatically() {
   const purpose = G.passPurpose;
   const idx = G.passTarget;
@@ -1268,18 +1461,18 @@ function renderBotThinking(bot, message) {
 
 /* ---- Setup screen ---- */
 let setupState = {
-  mode: 'hotseat', // 'hotseat' | 'bots'
+  mode: 'hotseat', // 'hotseat' | 'bots' | 'online'
   count: 4,
   names: ['', '', '', ''],
   yourName: '',
   difficulty: 'medium',
+  joinCode: '',
+  onlineError: null,
 };
 
 function renderSetup() {
   while (setupState.names.length < setupState.count) setupState.names.push('');
   while (setupState.names.length > setupState.count) setupState.names.pop();
-
-  const isBots = setupState.mode === 'bots';
 
   app.innerHTML = `
     <div class="screen">
@@ -1294,18 +1487,42 @@ function renderSetup() {
 
       <button class="btn-gold btn-block rules-cta" onclick="openRules()">${t('rulesBtn')}</button>
 
-      <div class="lang-picker">
-        <button class="lang-btn ${!isBots ? 'active' : ''}" onclick="setupSetMode('hotseat')">${t('modeHotseat')}</button>
-        <button class="lang-btn ${isBots ? 'active' : ''}" onclick="setupSetMode('bots')">${t('modeBots')}</button>
+      <div class="mode-picker">
+        <button class="lang-btn ${setupState.mode === 'hotseat' ? 'active' : ''}" onclick="setupSetMode('hotseat')">${t('modeHotseat')}</button>
+        <button class="lang-btn ${setupState.mode === 'bots' ? 'active' : ''}" onclick="setupSetMode('bots')">${t('modeBots')}</button>
+        <button class="lang-btn ${setupState.mode === 'online' ? 'active' : ''}" onclick="setupSetMode('online')">${t('modeOnline')}</button>
       </div>
 
       <div class="setup-card">
-        ${isBots ? renderSetupBots() : renderSetupHotseat()}
+        ${setupState.mode === 'bots' ? renderSetupBots() : setupState.mode === 'online' ? renderSetupOnline() : renderSetupHotseat()}
       </div>
 
-      <div class="info-banner">${isBots ? '' : t('passInfoBanner')}</div>
+      <div class="info-banner">${setupState.mode === 'hotseat' ? t('passInfoBanner') : ''}</div>
     </div>
     ${renderRulesModal()}
+  `;
+}
+
+function renderSetupOnline() {
+  return `
+    <h3>${t('yourName')}</h3>
+    <div class="name-list">
+      <input type="text" placeholder="${t('yourNamePlaceholder')}" value="${escapeHtml(setupState.yourName)}"
+        oninput="setupSetYourName(this.value)" />
+    </div>
+
+    ${setupState.onlineError ? `<div class="info-banner online-error">${escapeHtml(setupState.onlineError)}</div>` : ''}
+
+    <button class="btn-primary btn-block" onclick="setupCreateOnlineRoom()">${t('createRoomBtn')}</button>
+
+    <div class="subtitle" style="margin:6px 0 0;">${t('orJoinLabel')}</div>
+    <div class="name-list">
+      <input type="text" class="room-code-input" placeholder="${t('roomCodePlaceholder')}" value="${escapeHtml(setupState.joinCode)}"
+        oninput="setupSetJoinCode(this.value)" maxlength="5" />
+    </div>
+    <button class="btn-secondary btn-block" onclick="setupJoinOnlineRoom()">${t('joinRoomBtn')}</button>
+
+    ${!firebaseReady() ? `<div class="info-banner">${t('onlineNotConfigured')}</div>` : ''}
   `;
 }
 
@@ -1378,6 +1595,55 @@ function setupStartVsBots() {
   newGame(names, { vsBots: true, isBotFlags, difficulty: setupState.difficulty });
 }
 
+function setupSetJoinCode(v) { setupState.joinCode = v.toUpperCase(); }
+function setupCreateOnlineRoom() {
+  setupState.onlineError = null;
+  onlineCreateRoom(setupState.yourName.trim() || t('yourNamePlaceholder'));
+  renderSetup();
+}
+function setupJoinOnlineRoom() {
+  setupState.onlineError = null;
+  onlineJoinRoom(setupState.joinCode, setupState.yourName.trim() || t('yourNamePlaceholder'));
+  renderSetup();
+}
+
+/* ---- Online lobby / waiting room (shown once a room exists but the game hasn't started) ---- */
+function renderOnlineLobby() {
+  const data = ONLINE.roomData;
+  const players = (data && data.players) || [];
+  const canStart = ONLINE.isHost && players.length >= MIN_PLAYERS && players.length <= MAX_PLAYERS;
+
+  app.innerHTML = `
+    <div class="screen">
+      <div class="card-emoji">🍔</div>
+      <h1 class="title">${t('appTitle')}</h1>
+
+      <div class="setup-card">
+        <h3>${t('roomCodeLabel')}</h3>
+        <div class="room-code-display">${ONLINE.code}</div>
+        <button class="btn-secondary btn-block" onclick="copyRoomLink()">${t('copyLink')}</button>
+
+        <h3>${t('playersInRoom', players.length)}</h3>
+        <div class="choice-list">
+          ${players.map(p => `<div class="choice-btn lobby-player">${escapeHtml(p.name)}${p.id === 0 ? ' 👑' : ''}</div>`).join('')}
+        </div>
+
+        ${ONLINE.isHost
+          ? `<button class="btn-primary btn-block" ${canStart ? '' : 'disabled'} onclick="onlineStartGame()">${t('startOnlineGame')}</button>
+             ${!canStart ? `<div class="subtitle">${t('waitingForMorePlayers')}</div>` : ''}`
+          : `<div class="subtitle">${t('waitingForHost')}</div>`}
+
+        <button class="btn-secondary btn-block" onclick="exitToSetup()">${t('leaveRoom')}</button>
+      </div>
+    </div>
+    ${renderRulesModal()}
+  `;
+}
+function copyRoomLink() {
+  const url = location.origin + location.pathname + '?join=' + ONLINE.code;
+  if (navigator.clipboard) navigator.clipboard.writeText(url).catch(() => {});
+}
+
 /* ---- Pass cover screen ---- */
 function renderPassCover() {
   const target = G.players[G.passTarget];
@@ -1427,6 +1693,32 @@ function renderTradeRespond() {
 }
 function findCardAnywhereForDisplay(cardId, ownerGuess) {
   return ownerGuess.hand.find(c => c.id === cardId) || { id: cardId, type: 'ingredient', kind: 'bun' };
+}
+
+/* Online: only the actual trade target's device shows the respond screen
+   (it already reveals their hand + the offer) — everyone else just waits. */
+function renderOnlineTradeRespond() {
+  const ts = G.tradeState;
+  if (ONLINE.myId === ts.targetId) { renderTradeRespond(); return; }
+  const from = G.players.find(p => p.id === ts.fromId);
+  const target = G.players.find(p => p.id === ts.targetId);
+  renderOnlineWaiting(t('waitingForTradeResponse', escapeHtml(target.name), escapeHtml(from.name)));
+}
+
+/* Minimal non-interactive placeholder — table + log visible, no controls,
+   so onlookers can follow along without being able to poke game state. */
+function renderOnlineWaiting(message) {
+  app.innerHTML = `
+    ${menuButtonHtml()}
+    <div class="screen board">
+      <div class="top-row"><h2>⏳ ${t('waitingTitle')}</h2></div>
+      ${renderTable(currentPlayer())}
+      <div class="log-box">${G.log.slice(0, 6).map(l => `<div>${escapeHtml(l)}</div>`).join('')}</div>
+      <div class="bot-thinking-banner">${message}</div>
+    </div>
+    ${renderMainMenuModal()}
+    ${renderRulesModal()}
+  `;
 }
 
 /* ---- Card rendering helper ---- */
@@ -1505,16 +1797,63 @@ function renderGame() {
   if (!G.ui.handGrouped) setupHandDrag();
 }
 
+/* Online: everyone sees the same table, but only the active player's
+   device gets working controls — everyone else sees their own hand
+   (never someone else's) with cards dimmed/non-interactive and an
+   "X's turn" banner instead of "your turn". */
+function renderOnlineGame() {
+  const me = G.players[ONLINE.myId];
+  const active = currentPlayer();
+  const isMyTurn = active.id === me.id;
+
+  app.innerHTML = `
+    ${menuButtonHtml()}
+    <div class="screen board">
+      <div class="top-row">
+        <h2>${isMyTurn ? t('yourTurn', escapeHtml(me.name)) : t('otherTurn', escapeHtml(active.name))}</h2>
+        <div class="moves-indicator">
+          ${[0, 1, 2].map(i => `<div class="dot ${i < (3 - G.movesLeft) ? 'used' : ''}"></div>`).join('')}
+          <span>${t('movesLeft', G.movesLeft)}</span>
+        </div>
+      </div>
+
+      ${renderTable(active)}
+
+      <div class="log-box">${G.log.slice(0, 6).map(l => `<div>${escapeHtml(l)}</div>`).join('')}</div>
+
+      <div class="actions-row">
+        <button class="btn-gold" ${isMyTurn && G.movesLeft > 0 ? '' : 'disabled'} onclick="openMakeBurgerModal()">${t('makeBurgerBtn')}</button>
+        <button class="btn-secondary" ${isMyTurn && G.movesLeft > 0 ? '' : 'disabled'} onclick="openTradeModal()">${t('tradeBtn')}</button>
+        <button class="btn-danger" ${isMyTurn ? '' : 'disabled'} onclick="endTurn()">${t('endTurnBtn')}</button>
+      </div>
+
+      <div class="hand-label-row">
+        <div class="hand-label">${t('handLabel', me.hand.length)}</div>
+        <button class="btn-sm btn-secondary" onclick="toggleHandGrouped()">${G.ui.handGrouped ? t('fanBtn') : t('groupBtn')}</button>
+      </div>
+      ${G.ui.handGrouped ? renderGroupedHand(me, !isMyTurn) : renderFanHand(me, !isMyTurn)}
+    </div>
+    ${isMyTurn ? renderModal() : ''}
+    ${isMyTurn ? renderPendingReveal() : ''}
+    ${renderMainMenuModal()}
+    ${renderRulesModal()}
+  `;
+  if (isMyTurn && !G.ui.handGrouped) setupHandDrag();
+}
+
 function toggleHandGrouped() {
   G.ui.handGrouped = !G.ui.handGrouped;
   render();
 }
 
-function renderFanHand(p) {
+function renderFanHand(p, forceDisabled) {
   return `
     <div class="hand-scroll">
       <div class="hand fan-hand">
-        ${p.hand.map((c, i) => renderHandCard(c, p, i, p.hand.length)).join('')}
+        ${p.hand.map((c, i) => forceDisabled
+          ? renderCard(c, false, null, false, fanCardStyle(i, p.hand.length), t('notYourTurn'))
+          : renderHandCard(c, p, i, p.hand.length)
+        ).join('')}
       </div>
     </div>
   `;
@@ -1537,18 +1876,20 @@ function computeHandGroups(hand) {
   return groups;
 }
 
-function renderGroupedHand(p) {
+function renderGroupedHand(p, forceDisabled) {
   const groups = computeHandGroups(p.hand);
   return `
     <div class="hand grouped-hand">
-      ${groups.map(g => renderStackCard(g, p)).join('')}
+      ${groups.map(g => renderStackCard(g, p, forceDisabled)).join('')}
     </div>
   `;
 }
 
-function renderStackCard(group, p) {
+function renderStackCard(group, p, forceDisabled) {
   const front = group.cards[group.cards.length - 1];
-  const { usable, handler, reason } = cardUsability(front, p);
+  const { usable, handler, reason } = forceDisabled
+    ? { usable: false, handler: null, reason: t('notYourTurn') }
+    : cardUsability(front, p);
   const count = group.cards.length;
   const isNew = group.cards.some(c => G.newCardIds && G.newCardIds.has(c.id));
   const cardHtml = renderCard(front, usable, usable && handler ? handler : null, false, null, reason, true);
@@ -1899,4 +2240,10 @@ function renderEnd() {
 }
 
 /* ---- boot ---- */
+(function prefillJoinCodeFromUrl() {
+  try {
+    const code = new URLSearchParams(location.search).get('join');
+    if (code) { setupState.mode = 'online'; setupState.joinCode = code.toUpperCase(); }
+  } catch (e) {}
+})();
 render();

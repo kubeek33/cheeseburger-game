@@ -129,6 +129,44 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   border-color: var(--accent-2);
 }
 
+.mode-picker {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 480px;
+  flex-wrap: wrap;
+}
+.mode-picker .lang-btn { flex: 1 1 30%; font-size: 13px; }
+
+.room-code-input {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 2px solid var(--panel-light);
+  background: #fff;
+  color: var(--ink);
+  font-size: 20px;
+  text-align: center;
+  letter-spacing: 4px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+.room-code-display {
+  font-size: 40px;
+  font-weight: 900;
+  letter-spacing: 6px;
+  text-align: center;
+  color: var(--accent-2);
+  background: rgba(0,0,0,0.25);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 4px;
+}
+.online-error {
+  border-color: var(--danger) !important;
+  color: #ffd7d0;
+}
+.lobby-player { cursor: default; }
+
 .rules-cta {
   width: 100%;
   max-width: 480px;
