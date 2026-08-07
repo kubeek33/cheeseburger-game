@@ -536,10 +536,13 @@ function buildBurgerPile() {
    meant to be public/client-side for Firebase — that's normal, access is
    controlled by database security rules, not by hiding this object. */
 const FIREBASE_CONFIG = {
-  apiKey: 'PASTE_YOUR_API_KEY',
-  authDomain: 'PASTE_YOUR_PROJECT.firebaseapp.com',
-  databaseURL: 'https://PASTE_YOUR_PROJECT-default-rtdb.firebaseio.com',
-  projectId: 'PASTE_YOUR_PROJECT',
+  apiKey: 'AIzaSyBsljuTSDop2_e4hInOba23IRDSMMZuuP0',
+  authDomain: 'cheeseburger-game.firebaseapp.com',
+  databaseURL: 'https://cheeseburger-game-default-rtdb.firebaseio.com',
+  projectId: 'cheeseburger-game',
+  storageBucket: 'cheeseburger-game.firebasestorage.app',
+  messagingSenderId: '113927076846',
+  appId: '1:113927076846:web:dd02c5d21757806980ecff',
 };
 
 let ONLINE = null; // { code, myId, isHost, roomRef, roomData, syncing }
@@ -571,11 +574,22 @@ function serializeState(state) {
   delete copy.effectTimer;
   return copy;
 }
+/* Firebase Realtime Database silently drops empty arrays/objects on write
+   (an empty [] comes back as `undefined`, not []) — patch every array-typed
+   field back to [] so the rest of the game logic can keep assuming arrays. */
 function deserializeState(data) {
   const copy = Object.assign({}, data);
   copy.newCardIds = new Set(data.newCardIds || []);
   copy.newCardTimer = null;
   copy.effectTimer = null;
+  copy.drawPile = data.drawPile || [];
+  copy.discardPile = data.discardPile || [];
+  copy.burgerPile = data.burgerPile || [];
+  copy.log = data.log || [];
+  copy.players = (data.players || []).map(p => Object.assign({}, p, {
+    hand: p.hand || [],
+    burgers: p.burgers || [],
+  }));
   return copy;
 }
 
