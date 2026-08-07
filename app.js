@@ -62,6 +62,76 @@ const BOT_NAMES = {
   ],
 };
 
+/* ---------------- Sound effects (synthesized, no audio files needed) ---------------- */
+const Sfx = (() => {
+  let ctx = null;
+  let muted = localStorage.getItem('cbSfxMuted') === '1';
+
+  function ensureCtx() {
+    if (!ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return null;
+      ctx = new AC();
+    }
+    if (ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  }
+
+  // One short tone: freq (Hz), start offset (s), duration (s), waveform, peak volume.
+  function tone(freq, t0, dur, type, vol) {
+    const c = ensureCtx();
+    if (!c || muted) return;
+    const osc = c.createOscillator();
+    const gain = c.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.value = freq;
+    const start = c.currentTime + t0;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(vol, start + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
+    osc.connect(gain).connect(c.destination);
+    osc.start(start);
+    osc.stop(start + dur + 0.02);
+  }
+
+  const SOUNDS = {
+    draw:     () => tone(520, 0, 0.09, 'triangle', 0.11),
+    play:     () => { tone(660, 0, 0.07, 'square', 0.07); tone(880, 0.05, 0.09, 'square', 0.07); },
+    trade:    () => { tone(500, 0, 0.08, 'sine', 0.1); tone(700, 0.08, 0.1, 'sine', 0.1); },
+    burger:   () => { [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.07, 0.16, 'triangle', 0.12)); },
+    turn:     () => { tone(784, 0, 0.1, 'sine', 0.09); tone(988, 0.1, 0.14, 'sine', 0.09); },
+    win:      () => { [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, i * 0.09, 0.3, 'triangle', 0.13)); },
+    click:    () => tone(440, 0, 0.04, 'square', 0.05),
+    error:    () => { tone(220, 0, 0.1, 'sawtooth', 0.08); tone(180, 0.09, 0.14, 'sawtooth', 0.08); },
+  };
+
+  return {
+    play(name) { const fn = SOUNDS[name]; if (fn) fn(); },
+    unlock() { ensureCtx(); },
+    isMuted() { return muted; },
+    setMuted(v) {
+      muted = v;
+      localStorage.setItem('cbSfxMuted', v ? '1' : '0');
+    },
+    toggleMuted() { this.setMuted(!muted); return muted; },
+  };
+})();
+document.addEventListener('pointerdown', () => Sfx.unlock(), { once: true });
+
+/* Maps triggerEffect()'s emoji to a sound, so every action-card effect
+   (burger made, trade, steal, fly, etc.) gets audio for free at one call site. */
+const EFFECT_SFX = {
+  '🍔✨': 'burger',
+  '🤝': 'trade',
+  '🚚': 'play',
+  '📦': 'play',
+  '🕵️': 'play',
+  '🥷': 'play',
+  '🪰': 'error',
+  '🏏💥': 'play',
+  '🌬️': 'play',
+};
+
 function pickRandomBotNames(count) {
   const pool = shuffle(BOT_NAMES[LANG].slice());
   return pool.slice(0, count);
@@ -183,6 +253,8 @@ const STRINGS = {
     menuRules: '📖 Правила гри',
     menuLang: '🌐 Switch to English',
     menuRestart: '🔁 Почати заново (ті самі гравці)',
+    menuSoundOn: '🔊 Звук: увімкнено',
+    menuSoundOff: '🔇 Звук: вимкнено',
     menuExit: '🚪 Вийти в головне меню',
     close: 'Закрити',
     confirmRestartTitle: '🔁 Почати заново?',
@@ -320,6 +392,8 @@ const STRINGS = {
     menuRules: '📖 Rules',
     menuLang: '🌐 Переключити на українську',
     menuRestart: '🔁 Restart (same players)',
+    menuSoundOn: '🔊 Sound: on',
+    menuSoundOff: '🔇 Sound: off',
     menuExit: '🚪 Exit to main menu',
     close: 'Close',
     confirmRestartTitle: '🔁 Restart the game?',
@@ -745,6 +819,7 @@ function scheduleNewCardExpiry() {
    the top of the table. Falls back to a table-centered toast if omitted. */
 function triggerEffect(emoji, text, targetId) {
   if (!G) return;
+  Sfx.play(EFFECT_SFX[emoji] || 'play');
   G.effect = { emoji, text, targetId, key: Date.now() + '-' + Math.random() };
   clearTimeout(G.effectTimer);
   G.effectTimer = setTimeout(() => {
@@ -773,6 +848,7 @@ function ensureDrawPile(n) {
 function drawOne() {
   ensureDrawPile(1);
   if (G.drawPile.length === 0) return null;
+  Sfx.play('draw');
   return G.drawPile.pop();
 }
 
@@ -804,6 +880,7 @@ function confirmPassReveal() {
     G.currentPlayerIndex = G.passTarget;
     startTurnDraw();
     G.phase = 'game';
+    Sfx.play('turn');
   } else if (purpose === 'tradeRespond') {
     G.phase = 'tradeRespond';
   } else if (purpose === 'tradeBack' || purpose === 'backToGame') {
@@ -877,6 +954,7 @@ function afterBurgerMade() {
     G.phase = 'end';
     G.winner = [p];
     G.endReason = t('winByThreshold', p.name, WIN_THRESHOLD);
+    Sfx.play('win');
     render();
     return;
   }
@@ -903,6 +981,7 @@ function maybeEndByDepletion() {
   G.phase = 'end';
   G.winner = winners;
   G.endReason = t('pileDepleted');
+  Sfx.play('win');
 }
 
 /* ---------------- Trade ---------------- */
@@ -1339,6 +1418,11 @@ function botTryTradeWithBot(bot) {
 
 /* ---------------- Main menu (restart / exit) ---------------- */
 
+function toggleSfx() {
+  const nowMuted = Sfx.toggleMuted();
+  if (!nowMuted) Sfx.play('click');
+  render();
+}
 function openMainMenu() { G.ui.mainMenuOpen = 'menu'; render(); }
 function closeMainMenu() { if (G) { G.ui.mainMenuOpen = false; render(); } }
 function askConfirm(kind) { G.ui.mainMenuOpen = kind; render(); } // 'confirmRestart' | 'confirmExit'
@@ -1386,6 +1470,7 @@ function renderMainMenuModal() {
     <div class="choice-list">
       <button class="choice-btn" onclick="closeMainMenu(); openRules();">${t('menuRules')}</button>
       <button class="choice-btn" onclick="toggleLang()">${t('menuLang')}</button>
+      <button class="choice-btn" onclick="toggleSfx()">${Sfx.isMuted() ? t('menuSoundOff') : t('menuSoundOn')}</button>
       ${canRestart ? `<button class="choice-btn" onclick="askConfirm('confirmRestart')">${t('menuRestart')}</button>` : ''}
       <button class="choice-btn" onclick="askConfirm('confirmExit')">${G.online ? t('leaveRoom') : t('menuExit')}</button>
     </div>
@@ -1523,6 +1608,7 @@ function renderSetup() {
       <div class="lang-picker">
         <button class="lang-btn ${LANG === 'uk' ? 'active' : ''}" onclick="setLang('uk')">🇺🇦 Українська</button>
         <button class="lang-btn ${LANG === 'en' ? 'active' : ''}" onclick="setLang('en')">🇬🇧 English</button>
+        <button class="lang-btn" onclick="toggleSfx()" title="${Sfx.isMuted() ? t('menuSoundOff') : t('menuSoundOn')}">${Sfx.isMuted() ? '🔇' : '🔊'}</button>
       </div>
 
       <button class="btn-gold btn-block rules-cta" onclick="openRules()">${t('rulesBtn')}</button>
