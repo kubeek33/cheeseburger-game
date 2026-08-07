@@ -62,24 +62,24 @@ const BOT_NAMES = {
   ],
 };
 
-/* ---------------- Sound effects (synthesized, no audio files needed) ---------------- */
-const Sfx = (() => {
-  let ctx = null;
-  let muted = localStorage.getItem('cbSfxMuted') === '1';
-
-  function ensureCtx() {
-    if (!ctx) {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return null;
-      ctx = new AC();
-    }
-    if (ctx.state === 'suspended') ctx.resume();
-    return ctx;
+/* ---------------- Audio (synthesized, no audio files needed) ---------------- */
+let _audioCtx = null;
+function getAudioCtx() {
+  if (!_audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    _audioCtx = new AC();
   }
+  if (_audioCtx.state === 'suspended') _audioCtx.resume();
+  return _audioCtx;
+}
+
+const Sfx = (() => {
+  let muted = localStorage.getItem('cbSfxMuted') === '1';
 
   // One short tone: freq (Hz), start offset (s), duration (s), waveform, peak volume.
   function tone(freq, t0, dur, type, vol) {
-    const c = ensureCtx();
+    const c = getAudioCtx();
     if (!c || muted) return;
     const osc = c.createOscillator();
     const gain = c.createGain();
@@ -107,7 +107,6 @@ const Sfx = (() => {
 
   return {
     play(name) { const fn = SOUNDS[name]; if (fn) fn(); },
-    unlock() { ensureCtx(); },
     isMuted() { return muted; },
     setMuted(v) {
       muted = v;
@@ -116,7 +115,91 @@ const Sfx = (() => {
     toggleMuted() { this.setMuted(!muted); return muted; },
   };
 })();
-document.addEventListener('pointerdown', () => Sfx.unlock(), { once: true });
+
+/* Soft looping ambient pad (4-chord progression), independent volume/mute from Sfx. */
+const Music = (() => {
+  let enabled = localStorage.getItem('cbMusicOn') !== '0';
+  let volume = parseFloat(localStorage.getItem('cbMusicVol'));
+  if (isNaN(volume)) volume = 0.3;
+  let master = null;
+  let playing = false;
+  let timer = null;
+  let chordIndex = 0;
+  const CHORD_DUR = 4.2;
+  const PROGRESSION = [
+    [261.63, 329.63, 392.00], // C major
+    [220.00, 261.63, 329.63], // A minor
+    [174.61, 220.00, 261.63], // F major
+    [196.00, 246.94, 293.66], // G major
+  ];
+
+  function ensureMaster() {
+    const c = getAudioCtx();
+    if (!c) return null;
+    if (!master) {
+      master = c.createGain();
+      master.gain.value = volume;
+      master.connect(c.destination);
+    }
+    return c;
+  }
+
+  function playChord(notes, startTime) {
+    notes.forEach(freq => {
+      const c = _audioCtx;
+      const osc = c.createOscillator();
+      const g = c.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      g.gain.setValueAtTime(0, startTime);
+      g.gain.linearRampToValueAtTime(0.5 / notes.length, startTime + 0.8);
+      g.gain.linearRampToValueAtTime(0, startTime + CHORD_DUR);
+      osc.connect(g).connect(master);
+      osc.start(startTime);
+      osc.stop(startTime + CHORD_DUR + 0.05);
+    });
+  }
+
+  function scheduleLoop() {
+    if (!playing) return;
+    const c = ensureMaster();
+    if (!c) return;
+    playChord(PROGRESSION[chordIndex % PROGRESSION.length], c.currentTime + 0.05);
+    chordIndex++;
+    timer = setTimeout(scheduleLoop, CHORD_DUR * 1000 * 0.9);
+  }
+
+  function start() {
+    if (playing) return;
+    const c = ensureMaster();
+    if (!c) return;
+    playing = true;
+    scheduleLoop();
+  }
+  function stop() {
+    playing = false;
+    clearTimeout(timer);
+  }
+
+  return {
+    unlock() { if (enabled) start(); },
+    isEnabled() { return enabled; },
+    setEnabled(v) {
+      enabled = v;
+      localStorage.setItem('cbMusicOn', v ? '1' : '0');
+      if (v) start(); else stop();
+    },
+    toggleEnabled() { this.setEnabled(!enabled); return enabled; },
+    getVolume() { return volume; },
+    setVolume(v) {
+      volume = Math.max(0, Math.min(1, v));
+      localStorage.setItem('cbMusicVol', String(volume));
+      if (master) master.gain.setTargetAtTime(volume, _audioCtx.currentTime, 0.05);
+    },
+  };
+})();
+
+document.addEventListener('pointerdown', () => { getAudioCtx(); Music.unlock(); }, { once: true });
 
 /* Maps triggerEffect()'s emoji to a sound, so every action-card effect
    (burger made, trade, steal, fly, etc.) gets audio for free at one call site. */
@@ -164,7 +247,7 @@ const STRINGS = {
     rulesTooltip: 'Правила',
     menuTooltip: 'Меню',
     langToggle: 'EN',
-    modeHotseat: '👥 З друзями',
+    modeHotseat: '👥 Локально (з друзями)',
     modeBots: '🤖 Проти ботів',
     modeOnline: '🌐 Онлайн',
     yourName: "Твоє ім'я",
@@ -228,11 +311,11 @@ const STRINGS = {
     tradeBtn: '🔄 Обмін',
     endTurnBtn: '➡️ Завершити хід',
     handLabel: (n) => `Твоя рука (${n} карт) — торкнись картки дії, щоб зіграти її`,
-    cardsShort: (n) => `${n} карт(и)`,
-    burgersReady: (n) => `${n} 🍔`,
+    burgerProgress: (sum, threshold) => `${sum}/${threshold} 🍔`,
     foodTruckRevealTitle: 'Фудтрак — відкриті карти:',
     makeBurgerModalTitle: '🍔 Приготувати чізбургер',
     classicOption: (ok) => `Класичний рецепт — усі 5 інгредієнтів ${ok ? '✅' : '❌ (бракує інгредієнтів)'}`,
+    makeClassicBtn: '🍔 Приготувати класичний бургер',
     grandmaHint: '👵 Бабусин рецепт — обери рівно 3 різні інгредієнти:',
     grandmaConfirm: (n) => `Приготувати за бабусиним рецептом (${n}/3)`,
     grandmaModalTitle: '👵 Бабусин рецепт',
@@ -253,8 +336,12 @@ const STRINGS = {
     menuRules: '📖 Правила гри',
     menuLang: '🌐 Switch to English',
     menuRestart: '🔁 Почати заново (ті самі гравці)',
-    menuSoundOn: '🔊 Звук: увімкнено',
-    menuSoundOff: '🔇 Звук: вимкнено',
+    settingsTitle: 'Налаштування',
+    menuSoundOn: '🔊 Звукові ефекти: увімкнено',
+    menuSoundOff: '🔇 Звукові ефекти: вимкнено',
+    menuMusicOn: '🎵 Музика: увімкнено',
+    menuMusicOff: '🔕 Музика: вимкнено',
+    musicVolume: 'Гучність музики',
     menuExit: '🚪 Вийти в головне меню',
     close: 'Закрити',
     confirmRestartTitle: '🔁 Почати заново?',
@@ -303,7 +390,7 @@ const STRINGS = {
     rulesTooltip: 'Rules',
     menuTooltip: 'Menu',
     langToggle: 'UA',
-    modeHotseat: '👥 With friends',
+    modeHotseat: '👥 Local (pass & play)',
     modeBots: '🤖 Vs bots',
     modeOnline: '🌐 Online',
     yourName: 'Your name',
@@ -367,11 +454,11 @@ const STRINGS = {
     tradeBtn: '🔄 Trade',
     endTurnBtn: '➡️ End turn',
     handLabel: (n) => `Your hand (${n} cards) — tap an action card to play it`,
-    cardsShort: (n) => `${n} card(s)`,
-    burgersReady: (n) => `${n} 🍔`,
+    burgerProgress: (sum, threshold) => `${sum}/${threshold} 🍔`,
     foodTruckRevealTitle: 'Food Truck — revealed cards:',
     makeBurgerModalTitle: '🍔 Make a cheeseburger',
     classicOption: (ok) => `Classic recipe — all 5 ingredients ${ok ? '✅' : '❌ (missing ingredients)'}`,
+    makeClassicBtn: '🍔 Make the classic burger',
     grandmaHint: "👵 Grandma's Recipe — pick exactly 3 different ingredients:",
     grandmaConfirm: (n) => `Make it with Grandma's Recipe (${n}/3)`,
     grandmaModalTitle: "👵 Grandma's Recipe",
@@ -392,8 +479,12 @@ const STRINGS = {
     menuRules: '📖 Rules',
     menuLang: '🌐 Переключити на українську',
     menuRestart: '🔁 Restart (same players)',
-    menuSoundOn: '🔊 Sound: on',
-    menuSoundOff: '🔇 Sound: off',
+    settingsTitle: 'Settings',
+    menuSoundOn: '🔊 Sound effects: on',
+    menuSoundOff: '🔇 Sound effects: off',
+    menuMusicOn: '🎵 Music: on',
+    menuMusicOff: '🔕 Music: off',
+    musicVolume: 'Music volume',
     menuExit: '🚪 Exit to main menu',
     close: 'Close',
     confirmRestartTitle: '🔁 Restart the game?',
@@ -1423,6 +1514,39 @@ function toggleSfx() {
   if (!nowMuted) Sfx.play('click');
   render();
 }
+
+/* Settings modal is independent of G (must also work on the setup screen,
+   before a game exists), so it's its own bit of state and doesn't route
+   through G.ui.modal / closeModal() like every other modal here. */
+let settingsOpen = false;
+function openSettingsModal() { settingsOpen = true; render(); }
+function closeSettingsModal() { settingsOpen = false; render(); }
+function toggleMusicEnabled() {
+  const nowEnabled = Music.toggleEnabled();
+  render();
+  return nowEnabled;
+}
+function setMusicVolume(v) { Music.setVolume(Number(v) / 100); }
+function renderSettingsModal() {
+  if (!settingsOpen) return '';
+  return `
+    <div class="modal-overlay">
+      <div class="modal">
+        <h3>⚙️ ${t('settingsTitle')}</h3>
+        <div class="choice-list">
+          <button class="choice-btn" onclick="toggleSfx()">${Sfx.isMuted() ? t('menuSoundOff') : t('menuSoundOn')}</button>
+          <button class="choice-btn" onclick="toggleMusicEnabled()">${Music.isEnabled() ? t('menuMusicOn') : t('menuMusicOff')}</button>
+          <div class="settings-volume-row">
+            <span>${t('musicVolume')}</span>
+            <input type="range" min="0" max="100" value="${Math.round(Music.getVolume() * 100)}"
+              oninput="setMusicVolume(this.value)" ${Music.isEnabled() ? '' : 'disabled'} />
+          </div>
+        </div>
+        <div class="footer-actions"><button class="btn-secondary" onclick="closeSettingsModal()">${t('close')}</button></div>
+      </div>
+    </div>
+  `;
+}
 function openMainMenu() { G.ui.mainMenuOpen = 'menu'; render(); }
 function closeMainMenu() { if (G) { G.ui.mainMenuOpen = false; render(); } }
 function askConfirm(kind) { G.ui.mainMenuOpen = kind; render(); } // 'confirmRestart' | 'confirmExit'
@@ -1470,7 +1594,7 @@ function renderMainMenuModal() {
     <div class="choice-list">
       <button class="choice-btn" onclick="closeMainMenu(); openRules();">${t('menuRules')}</button>
       <button class="choice-btn" onclick="toggleLang()">${t('menuLang')}</button>
-      <button class="choice-btn" onclick="toggleSfx()">${Sfx.isMuted() ? t('menuSoundOff') : t('menuSoundOn')}</button>
+      <button class="choice-btn" onclick="closeMainMenu(); openSettingsModal();">⚙️ ${t('settingsTitle')}</button>
       ${canRestart ? `<button class="choice-btn" onclick="askConfirm('confirmRestart')">${t('menuRestart')}</button>` : ''}
       <button class="choice-btn" onclick="askConfirm('confirmExit')">${G.online ? t('leaveRoom') : t('menuExit')}</button>
     </div>
@@ -1498,6 +1622,7 @@ const app = document.getElementById('app');
 function render() {
   if (ONLINE && ONLINE.syncing) { pushStateToFirebase(); return; }
   doLocalRender();
+  if (settingsOpen) app.insertAdjacentHTML('beforeend', renderSettingsModal());
 }
 
 function doLocalRender() {
@@ -1601,6 +1726,7 @@ function renderSetup() {
 
   app.innerHTML = `
     <div class="screen">
+      <button class="menu-fab" onclick="openSettingsModal()" title="${t('settingsTitle')}">⚙️</button>
       <div class="card-emoji">🍔</div>
       <h1 class="title">${t('appTitle')}</h1>
       <div class="subtitle">${t('appSubtitle', MIN_PLAYERS, MAX_PLAYERS)}</div>
@@ -1608,7 +1734,6 @@ function renderSetup() {
       <div class="lang-picker">
         <button class="lang-btn ${LANG === 'uk' ? 'active' : ''}" onclick="setLang('uk')">🇺🇦 Українська</button>
         <button class="lang-btn ${LANG === 'en' ? 'active' : ''}" onclick="setLang('en')">🇬🇧 English</button>
-        <button class="lang-btn" onclick="toggleSfx()" title="${Sfx.isMuted() ? t('menuSoundOff') : t('menuSoundOn')}">${Sfx.isMuted() ? '🔇' : '🔊'}</button>
       </div>
 
       <button class="btn-gold btn-block rules-cta" onclick="openRules()">${t('rulesBtn')}</button>
@@ -2206,7 +2331,7 @@ function renderMiniPile(kind, count, label, topCard) {
 
 function renderSeat(pl, isActive, x, y, i) {
   const validSum = pl.burgers.filter(b => !b.fly).reduce((s, b) => s + b.value, 0);
-  const burgerLabel = validSum >= WIN_THRESHOLD ? t('burgersReady', validSum) : t('cardsShort', pl.burgers.length);
+  const burgerLabel = t('burgerProgress', validSum, WIN_THRESHOLD);
   return `
     <div class="seat ${isActive ? 'active' : ''}" style="left:${x}%; top:${y}%;">
       ${renderSeatEffectToast(pl)}
@@ -2221,7 +2346,8 @@ function renderSeat(pl, isActive, x, y, i) {
       </div>
       <div class="burger-slots">
         ${pl.burgers.map(b => `<div class="burger-slot ${b.fly ? 'fly' : ''}">
-            <img class="burger-slot-img" src="${BACK_ART.burger}" alt="" draggable="false" />
+            <img class="burger-slot-img" src="${BURGER_FRONT_ART[b.value] || BACK_ART.burger}" alt="${b.value}" draggable="false" />
+            <div class="burger-slot-value">${b.value}</div>
             ${b.fly ? '<span class="burger-slot-fly">🪰</span>' : ''}
           </div>`).join('')}
       </div>
@@ -2257,9 +2383,7 @@ function renderModal() {
       <div>
         <div class="hint" style="margin-bottom:6px;color:#d9c4a3;font-size:13px;">${t('grandmaHint')}</div>
         <div class="hand">
-          ${kinds.map(k => `<div class="card ingredient ${k} ${m.selectedKinds.includes(k) ? 'selected' : ''}" onclick="toggleGrandmaKind('${k}')">
-              <div class="ic">${ingMeta(k).ic}</div><div>${mName(ingMeta(k))}</div>
-            </div>`).join('')}
+          ${kinds.map(k => renderCard({ id: 'gk-' + k, type: 'ingredient', kind: k }, true, `toggleGrandmaKind('${k}')`, m.selectedKinds.includes(k))).join('')}
         </div>
         <button class="btn-gold btn-block" ${m.selectedKinds.length === 3 ? '' : 'disabled'} onclick="doMakeGrandma()">
           ${t('grandmaConfirm', m.selectedKinds.length)}
@@ -2271,11 +2395,21 @@ function renderModal() {
       return wrapModal(t('grandmaModalTitle'), grandmaSection, true);
     }
 
+    const classicSection = `
+      <div>
+        <div class="hint" style="margin-bottom:6px;color:#d9c4a3;font-size:13px;">${t('classicOption', canClassic)}</div>
+        <div class="hand">
+          ${INGREDIENTS.map(ing => renderCard({ id: 'preview-' + ing.kind, type: 'ingredient', kind: ing.kind }, true, null)).join('')}
+        </div>
+        <button class="btn-gold btn-block" ${canClassic ? '' : 'disabled'} onclick="doMakeClassic(); closeModal();">
+          ${t('makeClassicBtn')}
+        </button>
+      </div>
+    `;
+
     return wrapModal(t('makeBurgerModalTitle'), `
       <div class="choice-list">
-        <button class="choice-btn" ${canClassic ? '' : 'disabled'} onclick="doMakeClassic(); closeModal();">
-          ${t('classicOption', canClassic)}
-        </button>
+        ${classicSection}
         ${hasG ? grandmaSection : ''}
       </div>
     `, true);
