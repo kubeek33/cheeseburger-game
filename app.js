@@ -1769,16 +1769,18 @@ function renderCard(card, selectable, onclick, selected, fanStyle, reason, suppr
   const cls = ['card', 'card-art', card.type, card.kind, selected ? 'selected' : '', selectable ? '' : 'disabled', isNew ? 'card-new' : ''].join(' ');
   const clickAttr = onclick ? `onclick="${onclick}"` : '';
   const styleAttr = fanStyle ? `style="${fanStyle}"` : '';
-  const tooltip = (!selectable && reason) ? `<div class="card-tooltip">${escapeHtml(reason)}</div>` : '';
+  // Hover always shows what the card is/does (handy since the art has no
+  // label for ingredients, and the baked-in action text can be tiny) — if
+  // it's currently unusable, that reason replaces the description.
+  const infoText = (!selectable && reason) ? reason : (card.type === 'action' ? `${mName(meta)} — ${mDesc(meta)}` : mName(meta));
+  const tooltip = `<div class="card-tooltip">${escapeHtml(infoText)}</div>`;
   const badge = isNew ? `<div class="card-new-badge">${t('newBadge')}</div>` : '';
-  // Action-card art already has the name + rules text drawn into it;
-  // ingredient art is icon-only, so it still needs a text label overlay.
-  const label = card.type === 'ingredient' ? `<div class="card-art-label">${mName(meta)}</div>` : '';
   return `<div class="${cls}" ${clickAttr} ${styleAttr}>
+      <div class="card-art-clip">
+        <img class="card-art-img" src="${cardArtSrc(card)}" alt="${escapeHtml(mName(meta))}" draggable="false" />
+      </div>
       ${tooltip}
       ${badge}
-      <img class="card-art-img" src="${cardArtSrc(card)}" alt="${escapeHtml(mName(meta))}" draggable="false" />
-      ${label}
     </div>`;
 }
 
@@ -2099,17 +2101,17 @@ function renderMiniPile(kind, count, label, topCard) {
   const frontImg = frontSrc
     ? `<img class="mini-card-img" src="${frontSrc}" alt="" draggable="false" />`
     : '';
-  const countBadge = frontIsFaceUp
-    ? `<div class="mini-pile-count-badge">${count}</div>`
-    : `<div class="mini-card-count">${count}</div><div class="mini-card-label">${label}</div>`;
+  const innerBadge = frontIsFaceUp ? '' : `<div class="mini-card-count">${count}</div><div class="mini-card-label">${label}</div>`;
+  const outerBadge = frontIsFaceUp ? `<div class="mini-pile-count-badge">${count}</div>` : '';
   return `
     <div class="mini-pile">
       <div class="mini-card-stack">
         ${shadows}
         <div class="mini-card mini-card-front">
           ${frontImg}
-          ${countBadge}
+          ${innerBadge}
         </div>
+        ${outerBadge}
       </div>
       ${frontIsFaceUp ? `<div class="mini-pile-label">${label}</div>` : ''}
     </div>

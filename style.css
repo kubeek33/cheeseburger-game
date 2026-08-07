@@ -403,15 +403,21 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 /* Discard pile: top card shown face-up, count as a small corner badge */
 .mini-pile-count-badge {
   position: absolute;
-  top: -6px;
-  right: -6px;
+  bottom: -7px;
+  right: -7px;
+  min-width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: var(--ink);
-  color: var(--paper);
+  color: var(--accent-2);
   border: 2px solid var(--accent-2);
   font-size: 12px;
   font-weight: 800;
-  padding: 1px 6px;
-  border-radius: 10px;
+  line-height: 1;
+  padding: 0 5px;
+  border-radius: 999px;
   box-shadow: 0 2px 5px rgba(0,0,0,0.45);
   z-index: 11;
 }
@@ -608,7 +614,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   justify-content: center;
   width: max-content;
   min-width: 100%;
-  padding: 30px 24px 80px;
+  padding: 90px 24px 80px;
 }
 .fan-hand .card {
   flex: 0 0 auto;
@@ -657,8 +663,13 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   user-select: none;
   transition: transform .1s ease, box-shadow .1s ease;
   position: relative;
-  overflow: hidden;
   box-shadow: 0 3px 8px rgba(0,0,0,0.35);
+}
+.card-art-clip {
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  overflow: hidden;
 }
 .card:hover { transform: translateY(-4px); }
 .card.selected {
@@ -672,17 +683,6 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   height: 100%;
   object-fit: cover;
   display: block;
-  pointer-events: none;
-}
-.card-art-label {
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  padding: 3px 4px 4px;
-  font-size: 11px;
-  font-weight: 800;
-  color: #fff8ec;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.9);
-  background: linear-gradient(to top, rgba(0,0,0,0.55), rgba(0,0,0,0));
   pointer-events: none;
 }
 
@@ -768,9 +768,10 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .card-tooltip {
   position: absolute;
-  top: calc(100% + 10px);
+  bottom: calc(100% + 10px);
+  top: auto;
   left: 50%;
-  transform: translateX(-50%) translateY(-4px);
+  transform: translateX(-50%) translateY(4px);
   background: #1a1008;
   color: #fff8ec;
   font-size: 11px;
@@ -791,13 +792,13 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .card-tooltip::after {
   content: '';
   position: absolute;
-  bottom: 100%;
+  top: 100%;
   left: 50%;
   transform: translateX(-50%);
   border: 5px solid transparent;
-  border-bottom-color: #1a1008;
+  border-top-color: #1a1008;
 }
-.card.disabled:hover .card-tooltip {
+.card:hover .card-tooltip {
   opacity: 1;
   visibility: visible;
   transform: translateX(-50%) translateY(0);
