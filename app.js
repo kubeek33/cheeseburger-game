@@ -498,6 +498,32 @@ function renderRulesModal() {
   `;
 }
 
+/* Illustrated card art (SVGs in assets/cards/). Action-card art has the
+   name + rules text baked in (English only, from the source design files);
+   ingredient art is icon-only, so we still overlay a text label for those. */
+const CARD_ART = {
+  ingredient: {
+    bun: 'assets/cards/bun.svg',
+    patty: 'assets/cards/patty.svg',
+    cheese: 'assets/cards/cheese.svg',
+    lettuce: 'assets/cards/lettuce.svg',
+    tomato: 'assets/cards/tomato.svg',
+  },
+  action: {
+    foodtruck: 'assets/cards/foodtruck.svg',
+    delivery: 'assets/cards/delivery.svg',
+    grandma: 'assets/cards/grandma.svg',
+    inspector: 'assets/cards/inspector.svg',
+    shoplifter: 'assets/cards/shoplifter.svg',
+    fly: 'assets/cards/fly.svg',
+    swatter: 'assets/cards/swatter.svg',
+    gust: 'assets/cards/gust.svg',
+  },
+};
+const BACK_ART = { generic: 'assets/cards/back-all.svg', burger: 'assets/cards/back-burger.svg' };
+const BURGER_FRONT_ART = { 1: 'assets/cards/burger1.svg', 2: 'assets/cards/burger2.svg' };
+function cardArtSrc(card) { return CARD_ART[card.type] && CARD_ART[card.type][card.kind]; }
+
 function ingMeta(kind) { return INGREDIENTS.find(i => i.kind === kind); }
 function actMeta(kind) { return ACTIONS.find(a => a.kind === kind); }
 
@@ -1740,18 +1766,19 @@ function renderCard(card, selectable, onclick, selected, fanStyle, reason, suppr
   if (!card) return '';
   const meta = card.type === 'ingredient' ? ingMeta(card.kind) : actMeta(card.kind);
   const isNew = !suppressNewBadge && !!(G && G.newCardIds && G.newCardIds.has(card.id));
-  const cls = ['card', card.type, card.kind, selected ? 'selected' : '', selectable ? '' : 'disabled', isNew ? 'card-new' : ''].join(' ');
+  const cls = ['card', 'card-art', card.type, card.kind, selected ? 'selected' : '', selectable ? '' : 'disabled', isNew ? 'card-new' : ''].join(' ');
   const clickAttr = onclick ? `onclick="${onclick}"` : '';
   const styleAttr = fanStyle ? `style="${fanStyle}"` : '';
-  const desc = card.type === 'action' ? `<div class="desc">${mDesc(meta)}</div>` : '';
   const tooltip = (!selectable && reason) ? `<div class="card-tooltip">${escapeHtml(reason)}</div>` : '';
   const badge = isNew ? `<div class="card-new-badge">${t('newBadge')}</div>` : '';
+  // Action-card art already has the name + rules text drawn into it;
+  // ingredient art is icon-only, so it still needs a text label overlay.
+  const label = card.type === 'ingredient' ? `<div class="card-art-label">${mName(meta)}</div>` : '';
   return `<div class="${cls}" ${clickAttr} ${styleAttr}>
       ${tooltip}
       ${badge}
-      <div class="ic">${meta.ic}</div>
-      <div>${mName(meta)}</div>
-      ${desc}
+      <img class="card-art-img" src="${cardArtSrc(card)}" alt="${escapeHtml(mName(meta))}" draggable="false" />
+      ${label}
     </div>`;
 }
 
@@ -2043,7 +2070,7 @@ function renderTable(activePlayer) {
       <div class="table-felt"></div>
       <div class="table-center">
         ${renderMiniPile('draw', G.drawPile.length, t('pileDraw'))}
-        ${renderMiniPile('discard', G.discardPile.length, t('pileDiscard'))}
+        ${renderMiniPile('discard', G.discardPile.length, t('pileDiscard'), G.discardPile[G.discardPile.length - 1])}
         ${renderMiniPile('burger', G.burgerPile.length, t('pileBurgers'))}
       </div>
       ${seats}
@@ -2054,23 +2081,37 @@ function renderTable(activePlayer) {
 
 /* Mini card-stack visual for the three central piles. 'discard' gets a
    messier scattered look (random-ish fixed rotations), the others sit neat. */
-function renderMiniPile(kind, count, label) {
+function renderMiniPile(kind, count, label, topCard) {
+  const backSrc = kind === 'burger' ? BACK_ART.burger : BACK_ART.generic;
   const shadowLayers = kind === 'discard'
     ? [{ r: -9, x: -5 }, { r: 7, x: 4 }]
     : [{ r: -2, x: -2 }, { r: 1, x: 1 }];
   const depth = count === 0 ? 0 : Math.min(2, Math.ceil(count / 12));
   const shadows = shadowLayers.slice(0, depth).map((l, i) =>
-    `<div class="mini-card ${kind}-back" style="transform:translate(${l.x}px, ${l.x}px) rotate(${l.r}deg); z-index:${i};"></div>`
+    `<div class="mini-card" style="transform:translate(${l.x}px, ${l.x}px) rotate(${l.r}deg); z-index:${i};">
+      <img class="mini-card-img" src="${backSrc}" alt="" draggable="false" />
+    </div>`
   ).join('');
+  // The discard pile shows the actual last-discarded card face-up on top,
+  // like a real tabletop discard pile — everything else stays face-down.
+  const frontIsFaceUp = kind === 'discard' && topCard;
+  const frontSrc = frontIsFaceUp ? cardArtSrc(topCard) : backSrc;
+  const frontImg = frontSrc
+    ? `<img class="mini-card-img" src="${frontSrc}" alt="" draggable="false" />`
+    : '';
+  const countBadge = frontIsFaceUp
+    ? `<div class="mini-pile-count-badge">${count}</div>`
+    : `<div class="mini-card-count">${count}</div><div class="mini-card-label">${label}</div>`;
   return `
     <div class="mini-pile">
       <div class="mini-card-stack">
         ${shadows}
-        <div class="mini-card ${kind}-back mini-card-front">
-          <div class="mini-card-count">${count}</div>
-          <div class="mini-card-label">${label}</div>
+        <div class="mini-card mini-card-front">
+          ${frontImg}
+          ${countBadge}
         </div>
       </div>
+      ${frontIsFaceUp ? `<div class="mini-pile-label">${label}</div>` : ''}
     </div>
   `;
 }
@@ -2091,7 +2132,10 @@ function renderSeat(pl, isActive, x, y, i) {
         <span>🍔 ${burgerLabel}</span>
       </div>
       <div class="burger-slots">
-        ${pl.burgers.map(b => `<div class="burger-slot ${b.fly ? 'fly' : ''}">${b.fly ? '🪰' : '🍔'}</div>`).join('')}
+        ${pl.burgers.map(b => `<div class="burger-slot ${b.fly ? 'fly' : ''}">
+            <img class="burger-slot-img" src="${BACK_ART.burger}" alt="" draggable="false" />
+            ${b.fly ? '<span class="burger-slot-fly">🪰</span>' : ''}
+          </div>`).join('')}
       </div>
     </div>
   `;
