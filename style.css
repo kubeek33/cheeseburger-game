@@ -507,35 +507,18 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .opp-card.active { border-color: var(--accent-2); box-shadow: 0 0 0 2px var(--accent-2) inset; }
 .opp-card .name { font-weight: 700; margin-bottom: 4px; }
 .opp-card .stat { color: #d9c4a3; display: flex; justify-content: space-between; }
-.burger-slots { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+.burger-slots { display: flex; gap: 4px; margin-top: 4px; flex-wrap: nowrap; padding-top: 14px; }
 .burger-slot {
   width: 26px; height: 36px;
+  flex-shrink: 0;
   border-radius: 5px;
-  overflow: hidden;
   display: flex; align-items: center; justify-content: center;
   font-size: 14px;
   position: relative;
   box-shadow: 0 2px 4px rgba(0,0,0,0.35);
+  cursor: default;
 }
-.burger-slot-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.burger-slot-value {
-  position: absolute;
-  bottom: 1px;
-  right: 1px;
-  min-width: 12px;
-  height: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--ink);
-  color: var(--accent-2);
-  border: 1px solid var(--accent-2);
-  font-size: 8px;
-  font-weight: 800;
-  line-height: 1;
-  border-radius: 999px;
-  z-index: 2;
-}
+.burger-slot-img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 5px; }
 .burger-slot-fly {
   position: absolute;
   inset: 0;
@@ -816,7 +799,8 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   border: 5px solid transparent;
   border-top-color: #1a1008;
 }
-.card:hover .card-tooltip {
+.card:hover .card-tooltip,
+.burger-slot:hover .card-tooltip {
   opacity: 1;
   visibility: visible;
   transform: translateX(-50%) translateY(0);
@@ -867,6 +851,20 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   padding: 12px 14px;
 }
 .choice-btn:hover { filter: brightness(1.2); }
+.kind-picker { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
+.kind-chip {
+  background: var(--panel-light);
+  color: var(--paper);
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.kind-chip:hover { filter: brightness(1.2); }
+.kind-chip.active {
+  background: var(--accent-2);
+  color: var(--ink);
+}
 .settings-volume-row {
   display: flex;
   align-items: center;

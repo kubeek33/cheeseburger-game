@@ -117,6 +117,10 @@ const Sfx = (() => {
 })();
 
 /* Soft looping ambient pad (4-chord progression), independent volume/mute from Sfx. */
+/* Upbeat looping bounce: a bass pulse + soft chord pad + a cheerful lead
+   riff, stepped through eighth-notes. The lead alternates between two
+   phrases every full pass through the progression, so the loop has some
+   sense of development instead of repeating one static bar forever. */
 const Music = (() => {
   let enabled = localStorage.getItem('cbMusicOn') !== '0';
   let volume = parseFloat(localStorage.getItem('cbMusicVol'));
@@ -124,14 +128,25 @@ const Music = (() => {
   let master = null;
   let playing = false;
   let timer = null;
-  let chordIndex = 0;
-  const CHORD_DUR = 4.2;
-  const PROGRESSION = [
-    [261.63, 329.63, 392.00], // C major
-    [220.00, 261.63, 329.63], // A minor
-    [174.61, 220.00, 261.63], // F major
-    [196.00, 246.94, 293.66], // G major
+  let stepIndex = 0;
+
+  const BPM = 132;
+  const STEP_DUR = 60 / BPM / 2; // eighth note
+  const STEPS_PER_CHORD = 8;
+
+  // I-V-vi-IV in C major — a classic cheerful, upbeat pop progression.
+  const CHORDS = [
+    { root: 261.63, notes: [261.63, 329.63, 392.00] }, // C
+    { root: 392.00, notes: [392.00, 493.88, 587.33] }, // G
+    { root: 220.00, notes: [220.00, 261.63, 329.63] }, // Am
+    { root: 349.23, notes: [349.23, 440.00, 523.25] }, // F
   ];
+  const STEPS_PER_PASS = STEPS_PER_CHORD * CHORDS.length;
+
+  // Melodic multipliers relative to each chord's root — two alternating
+  // bouncy phrases so every other pass through the progression feels new.
+  const LEAD_A = [1, 1.5, 2, 1.5, 1.25, 1.5, 1, 0];
+  const LEAD_B = [2, 1.5, 1.25, 1.5, 2, 2.5, 2, 1.5];
 
   function ensureMaster() {
     const c = getAudioCtx();
@@ -144,29 +159,43 @@ const Music = (() => {
     return c;
   }
 
-  function playChord(notes, startTime) {
-    notes.forEach(freq => {
-      const c = _audioCtx;
-      const osc = c.createOscillator();
-      const g = c.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      g.gain.setValueAtTime(0, startTime);
-      g.gain.linearRampToValueAtTime(0.5 / notes.length, startTime + 0.8);
-      g.gain.linearRampToValueAtTime(0, startTime + CHORD_DUR);
-      osc.connect(g).connect(master);
-      osc.start(startTime);
-      osc.stop(startTime + CHORD_DUR + 0.05);
-    });
+  function playNote(freq, startTime, dur, type, vol) {
+    const c = _audioCtx;
+    const osc = c.createOscillator();
+    const g = c.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0, startTime);
+    g.gain.linearRampToValueAtTime(vol, startTime + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0008, startTime + dur);
+    osc.connect(g).connect(master);
+    osc.start(startTime);
+    osc.stop(startTime + dur + 0.02);
   }
 
-  function scheduleLoop() {
+  function scheduleStep() {
     if (!playing) return;
     const c = ensureMaster();
     if (!c) return;
-    playChord(PROGRESSION[chordIndex % PROGRESSION.length], c.currentTime + 0.05);
-    chordIndex++;
-    timer = setTimeout(scheduleLoop, CHORD_DUR * 1000 * 0.9);
+    const posInPass = stepIndex % STEPS_PER_PASS;
+    const chordIdx = Math.floor(posInPass / STEPS_PER_CHORD);
+    const stepInChord = posInPass % STEPS_PER_CHORD;
+    const pass = Math.floor(stepIndex / STEPS_PER_PASS);
+    const chord = CHORDS[chordIdx];
+    const lead = (pass % 2 === 0) ? LEAD_A : LEAD_B;
+    const startTime = c.currentTime + 0.03;
+
+    if (stepInChord === 0) {
+      chord.notes.forEach(freq => playNote(freq, startTime, STEP_DUR * STEPS_PER_CHORD * 0.95, 'sine', 0.045));
+    }
+    if (stepInChord % 2 === 0) {
+      playNote(chord.root / 2, startTime, STEP_DUR * 0.85, 'triangle', 0.11);
+    }
+    const mult = lead[stepInChord];
+    if (mult > 0) playNote(chord.root * mult, startTime, STEP_DUR * 0.8, 'square', 0.055);
+
+    stepIndex++;
+    timer = setTimeout(scheduleStep, STEP_DUR * 1000);
   }
 
   function start() {
@@ -174,7 +203,7 @@ const Music = (() => {
     const c = ensureMaster();
     if (!c) return;
     playing = true;
-    scheduleLoop();
+    scheduleStep();
   }
   function stop() {
     playing = false;
@@ -312,6 +341,8 @@ const STRINGS = {
     endTurnBtn: '➡️ Завершити хід',
     handLabel: (n) => `Твоя рука (${n} карт) — торкнись картки дії, щоб зіграти її`,
     burgerProgress: (sum, threshold) => `${sum}/${threshold} 🍔`,
+    burgerTooltip: (v) => `Чізбургер — ${v} 🍔`,
+    burgerTooltipFly: (v) => `Чізбургер — ${v} 🍔 (не рахується, поки не прибрати муху 🪰)`,
     foodTruckRevealTitle: 'Фудтрак — відкриті карти:',
     makeBurgerModalTitle: '🍔 Приготувати чізбургер',
     classicOption: (ok) => `Класичний рецепт — усі 5 інгредієнтів ${ok ? '✅' : '❌ (бракує інгредієнтів)'}`,
@@ -323,6 +354,12 @@ const STRINGS = {
     playerCardsCount: (name, n) => `${name} (${n} карт)`,
     tradeOfferTitle2: (name) => `🔄 Обмін з ${name}`,
     tradeChooseOffer: 'Обери одну свою карту, яку пропонуєш:',
+    tradeChooseWant: 'Що хочеш отримати натомість?',
+    wantAny: 'Будь-яка карта',
+    wantAction: 'Будь-яка карта дії',
+    tradeWants: (want) => `Хоче отримати: ${want}`,
+    tradeNoMatch: 'У тебе немає такої картки — можеш лише відхилити обмін.',
+    reasonTradeKindMismatch: 'Не те, що просили',
     proposeTrade: 'Запропонувати обмін',
     deliveryTitle: "📦 Кур'єр — оголоси інгредієнт",
     inspectorTargetTitle: '🕵️ Санінспектор — обери гравця',
@@ -455,6 +492,8 @@ const STRINGS = {
     endTurnBtn: '➡️ End turn',
     handLabel: (n) => `Your hand (${n} cards) — tap an action card to play it`,
     burgerProgress: (sum, threshold) => `${sum}/${threshold} 🍔`,
+    burgerTooltip: (v) => `Cheeseburger — ${v} 🍔`,
+    burgerTooltipFly: (v) => `Cheeseburger — ${v} 🍔 (doesn't count until the fly is removed 🪰)`,
     foodTruckRevealTitle: 'Food Truck — revealed cards:',
     makeBurgerModalTitle: '🍔 Make a cheeseburger',
     classicOption: (ok) => `Classic recipe — all 5 ingredients ${ok ? '✅' : '❌ (missing ingredients)'}`,
@@ -466,6 +505,12 @@ const STRINGS = {
     playerCardsCount: (name, n) => `${name} (${n} cards)`,
     tradeOfferTitle2: (name) => `🔄 Trade with ${name}`,
     tradeChooseOffer: 'Choose one of your cards to offer:',
+    tradeChooseWant: 'What do you want back?',
+    wantAny: 'Any card',
+    wantAction: 'Any action card',
+    tradeWants: (want) => `Wants: ${want}`,
+    tradeNoMatch: "You don't have that — you can only decline this trade.",
+    reasonTradeKindMismatch: "Not what's being asked for",
     proposeTrade: 'Propose trade',
     deliveryTitle: '📦 Delivery Guy — call an ingredient',
     inspectorTargetTitle: '🕵️ Health Inspector — choose a player',
@@ -569,7 +614,7 @@ function rulesHtml() {
       </ol>
       <ul>
         <li><b>Приготувати чізбургер</b> — зібрати по 1 картці кожного з 5 інгредієнтів, скинути їх і взяти верхню карту зі стосу чізбургерів.</li>
-        <li><b>Обмін</b> — запропонувати одному гравцю обмін картами (1 на 1). Гравець може погодитись або відмовитись; відмова не рахується як витрачений хід.</li>
+        <li><b>Обмін</b> — запропонувати одному гравцю обмін картами (1 на 1): віддай одну свою карту й вкажи, що хочеш отримати натомість (конкретний інгредієнт, будь-яку карту дії або без різниці). Гравець може погодитись, давши відповідну карту, або відмовитись; відмова не рахується як витрачений хід.</li>
         <li><b>Зіграти карту дії</b> — розіграти одну з карт дій (описи нижче). Кожна зіграна карта дії — окремий хід.</li>
       </ul>
       <p>Коли колода для взяття закінчується, скид перетасовується і стає новою колодою.</p>
@@ -623,7 +668,7 @@ function rulesHtml() {
     </ol>
     <ul>
       <li><b>Make a cheeseburger</b> — collect 1 card of each of the 5 ingredients, discard them, and take the top card of the burger pile.</li>
-      <li><b>Trade</b> — offer another player a 1-for-1 card trade. They can accept or decline; a decline doesn't cost you the move.</li>
+      <li><b>Trade</b> — offer another player a 1-for-1 card trade: give up one of your cards and say what you want back (a specific ingredient, any action card, or no preference). They can accept by handing over a matching card, or decline; a decline doesn't cost you the move.</li>
       <li><b>Play an action card</b> — play one of the action cards (described below). Each action card played is a separate move.</li>
     </ul>
     <p>When the draw pile runs out, the discard pile is reshuffled and becomes the new draw pile.</p>
@@ -1083,17 +1128,33 @@ function openTradeModal() {
   render();
 }
 function pickTradeTarget(targetId) {
-  G.ui.modal = { type: 'tradeOffer', targetId, offeredCardId: null };
+  G.ui.modal = { type: 'tradeOffer', targetId, offeredCardId: null, requestedKind: 'any' };
   render();
 }
 function selectOfferCard(cardId) {
   G.ui.modal.offeredCardId = cardId;
   render();
 }
+function selectRequestedKind(kind) {
+  G.ui.modal.requestedKind = kind;
+  render();
+}
+/* kind is either an ingredient kind, 'action' (any action card), or 'any' (no preference) */
+function cardMatchesKind(c, kind) {
+  if (!kind || kind === 'any') return true;
+  if (kind === 'action') return c.type === 'action';
+  return c.type === 'ingredient' && c.kind === kind;
+}
+function describeRequestedKind(kind) {
+  if (!kind || kind === 'any') return t('wantAny');
+  if (kind === 'action') return t('wantAction');
+  const meta = ingMeta(kind);
+  return `${meta.ic} ${mName(meta)}`;
+}
 function confirmOffer() {
-  const { targetId, offeredCardId } = G.ui.modal;
+  const { targetId, offeredCardId, requestedKind } = G.ui.modal;
   if (!offeredCardId) return;
-  G.tradeState = { fromId: currentPlayer().id, targetId, offeredCardId, status: 'pending' };
+  G.tradeState = { fromId: currentPlayer().id, targetId, offeredCardId, requestedKind: requestedKind || 'any', status: 'pending' };
   G.ui.modal = null;
   goToPassCover(targetId, 'tradeRespond');
 }
@@ -1461,15 +1522,17 @@ function botDecideTradeResponse(bot) {
   const ts = G.tradeState;
   const from = G.players.find(p => p.id === ts.fromId);
   const offered = findCardAnywhereForDisplay(ts.offeredCardId, from);
+  const requestedKind = ts.requestedKind || 'any';
+  const matches = bot.hand.filter(c => cardMatchesKind(c, requestedKind));
+  if (!matches.length) return 'DECLINE'; // can't fulfill what's being asked for
   const diff = bot.difficulty || 'medium';
   const acceptChance = { easy: 0.5, medium: 0.65, hard: 0.8 }[diff] ?? 0.6;
   const have = new Set(bot.hand.filter(c => c.type === 'ingredient').map(c => c.kind));
   const wantsOffered = offered.type === 'ingredient' && !have.has(offered.kind);
   if (!wantsOffered && Math.random() > acceptChance) return 'DECLINE';
-  if (!bot.hand.length) return 'DECLINE';
   const counts = {};
   bot.hand.forEach(c => { counts[c.kind] = (counts[c.kind] || 0) + 1; });
-  const give = bot.hand.slice().sort((a, b) => (counts[b.kind] - counts[a.kind]))[0];
+  const give = matches.slice().sort((a, b) => (counts[b.kind] - counts[a.kind]))[0];
   return give.id;
 }
 
@@ -1925,6 +1988,8 @@ function renderTradeRespond() {
   const from = G.players.find(p => p.id === ts.fromId);
   const to = G.players.find(p => p.id === ts.targetId);
   const offeredCard = [...from.hand].find(c => c.id === ts.offeredCardId) || findCardAnywhereForDisplay(ts.offeredCardId, from);
+  const requestedKind = ts.requestedKind || 'any';
+  const hasMatch = to.hand.some(c => cardMatchesKind(c, requestedKind));
 
   app.innerHTML = `
     ${menuButtonHtml()}
@@ -1932,9 +1997,13 @@ function renderTradeRespond() {
       <h2>${t('tradeOfferTitle')}</h2>
       <div class="subtitle">${t('tradeOffersYou', escapeHtml(from.name))}</div>
       <div class="hand">${renderCard(offeredCard, false)}</div>
-      <div class="subtitle">${t('tradeChooseResponse')}</div>
+      <div class="subtitle">${t('tradeWants', describeRequestedKind(requestedKind))}</div>
+      <div class="subtitle">${hasMatch ? t('tradeChooseResponse') : t('tradeNoMatch')}</div>
       <div class="hand">
-        ${to.hand.map(c => renderCard(c, true, `respondTrade('${c.id}')`)).join('')}
+        ${to.hand.map(c => {
+          const matches = cardMatchesKind(c, requestedKind);
+          return renderCard(c, matches, matches ? `respondTrade('${c.id}')` : null, false, null, matches ? null : t('reasonTradeKindMismatch'));
+        }).join('')}
       </div>
       <button class="btn-danger" onclick="respondTrade('DECLINE')">${t('declineTrade')}</button>
     </div>
@@ -2346,8 +2415,8 @@ function renderSeat(pl, isActive, x, y, i) {
       </div>
       <div class="burger-slots">
         ${pl.burgers.map(b => `<div class="burger-slot ${b.fly ? 'fly' : ''}">
-            <img class="burger-slot-img" src="${BURGER_FRONT_ART[b.value] || BACK_ART.burger}" alt="${b.value}" draggable="false" />
-            <div class="burger-slot-value">${b.value}</div>
+            <img class="burger-slot-img" src="${BACK_ART.burger}" alt="" draggable="false" />
+            <div class="card-tooltip">${b.fly ? t('burgerTooltipFly', b.value) : t('burgerTooltip', b.value)}</div>
             ${b.fly ? '<span class="burger-slot-fly">🪰</span>' : ''}
           </div>`).join('')}
       </div>
@@ -2425,10 +2494,17 @@ function renderModal() {
 
   if (m.type === 'tradeOffer') {
     const target = G.players.find(pl => pl.id === m.targetId);
+    const kindChip = (kind, label) => `<button class="kind-chip ${m.requestedKind === kind ? 'active' : ''}" onclick="selectRequestedKind('${kind}')">${label}</button>`;
     return wrapModal(t('tradeOfferTitle2', escapeHtml(target.name)), `
       <div class="subtitle">${t('tradeChooseOffer')}</div>
       <div class="hand">
         ${p.hand.map(c => renderCard(c, true, `selectOfferCard('${c.id}')`, m.offeredCardId === c.id)).join('')}
+      </div>
+      <div class="subtitle">${t('tradeChooseWant')}</div>
+      <div class="kind-picker">
+        ${kindChip('any', '🤷 ' + t('wantAny'))}
+        ${INGREDIENTS.map(ing => kindChip(ing.kind, `${ing.ic} ${mName(ing)}`)).join('')}
+        ${kindChip('action', '🃏 ' + t('wantAction'))}
       </div>
       <button class="btn-primary btn-block" ${m.offeredCardId ? '' : 'disabled'} onclick="confirmOffer()">${t('proposeTrade')}</button>
     `, true);
