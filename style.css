@@ -181,6 +181,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   padding: 18px;
   font-size: 15px;
   color: var(--paper);
+  flex-shrink: 0;
   animation: bot-think-pulse 1.4s ease-in-out infinite;
 }
 @keyframes bot-think-pulse {
@@ -253,12 +254,30 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .pass-cover .hint { color: #d9c4a3; font-size: 14px; max-width: 320px; }
 .pass-cover .icon { font-size: 64px; }
 
-/* Game board */
-.board {
+/* Game board — fills the viewport with no page scroll: the table region is
+   the only flexible piece (flex:1), so it expands to soak up whatever
+   vertical space isn't needed by the header/actions/hand, which stay
+   pinned at their natural size at the top and bottom. .screen and .board
+   are the same element (class="screen board"), so this overrides .screen's
+   own min-height/padding rather than sizing a separate child. */
+.screen.board {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  padding: 14px 16px 10px;
+  overflow: hidden;
+}
+.table-region-flex {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
 }
 
 .top-row {
@@ -267,12 +286,21 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 /* Players arranged around an open dashed circle — no table prop, just space */
+/* The table dominates the screen and follows the device's natural
+   orientation: a tall oval on mobile (portrait), a wide oval on desktop
+   (landscape) — see the min-width:900px block below. Seats are placed at
+   fixed percentages (renderTable in app.js), so the oval shape follows
+   automatically from whatever aspect-ratio is set here, on either axis. */
 .table-wrap {
-  width: min(100%, 460px, 62vh);
-  aspect-ratio: 1 / 1; /* always a true circle, regardless of container width */
+  height: 100%;
+  width: auto;
+  max-width: 96%;
+  max-height: 100%;
+  aspect-ratio: 3 / 4;
   margin: 0 auto;
   position: relative;
 }
@@ -335,6 +363,9 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9) translateY(-14px); }
 }
 
+/* Sized as percentages of the table (not fixed px) so the three piles
+   always fit in a single row and never wrap into the seats around them,
+   no matter how small or large the table itself ends up being. */
 .table-center {
   position: absolute;
   left: 50%;
@@ -342,22 +373,23 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   transform: translate(-50%, -50%);
   z-index: 2;
   display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
+  gap: 5%;
+  flex-wrap: nowrap;
   justify-content: center;
-  max-width: 78%;
+  width: 46%; /* narrow enough to clear the side seats, which sit ~12%–88% across */
 }
 /* Mini card-stack visuals for draw/discard/burger piles */
 .mini-pile {
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 98px;
+  width: 30%;
+  min-width: 0;
 }
 .mini-card-stack {
   position: relative;
-  width: 84px;
-  height: 114px;
+  width: 100%;
+  aspect-ratio: 178.58 / 249.45;
 }
 .mini-card {
   position: absolute;
@@ -469,18 +501,30 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .seat .burger-slots { justify-content: center; margin-top: 4px; }
 
 @media (max-width: 640px) {
-  .table-wrap { width: min(100%, 340px, 48vh); }
   .seat { width: 74px; font-size: 9.5px; }
   .seat-name { font-size: 10.5px; }
   .seat-avatar-ring { width: 44px; height: 44px; }
   .seat-avatar { font-size: 22px; }
   .seat-turn-badge { font-size: 11px; padding: 2px 4px; }
-  .table-center { gap: 6px; }
-  .mini-pile { width: 70px; }
-  .mini-card-stack { width: 60px; height: 82px; }
   .mini-card-count { font-size: 19px; }
   .mini-pile-label { font-size: 8px; }
   .burger-slot { width: 28px; height: 39px; }
+}
+
+/* Desktop: the table flips to a wide landscape oval instead of a tall
+   portrait one, and the page itself gets more breathing room so the table
+   can actually use the extra width instead of sitting in a mobile-width
+   column with empty space on either side. */
+@media (min-width: 900px) {
+  .screen { max-width: 1320px; }
+  .table-wrap { max-width: 92%; aspect-ratio: 16 / 8; }
+  .mini-card-count { font-size: 30px; }
+  .seat { width: 108px; font-size: 12px; }
+  .seat-avatar-ring { width: 68px; height: 68px; }
+  .seat-avatar { font-size: 42px; }
+  .burger-slot { width: 40px; height: 55px; }
+  .hand-row { max-width: 900px; }
+  .card, .card-stack-wrap { width: 118px; height: 164px; }
 }
 
 .opponents {
@@ -545,15 +589,40 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 }
 .moves-indicator .dot.used { background: var(--accent); }
 
-.log-box {
-  background: rgba(0,0,0,0.25);
-  border-radius: 8px;
-  padding: 8px 12px;
+/* Dota-style move log: fading notifications over the table's left edge
+   instead of a persistent scrollable box — newest on top and fully opaque,
+   older entries dimmer, the whole stack clears itself after a few quiet
+   seconds (see pushLogToasts() in app.js). */
+.log-toast-stack {
+  position: absolute;
+  left: 3%;
+  top: 4%;
+  width: 48%;
+  max-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+  z-index: 15;
+}
+.log-toast-line {
+  background: rgba(13,9,5,0.75);
+  border-left: 3px solid var(--accent-2);
+  border-radius: 6px;
+  padding: 6px 10px;
   font-size: 12px;
-  color: #d9c4a3;
-  max-height: 60px;
-  overflow-y: auto;
-  width: 100%;
+  line-height: 1.35;
+  color: var(--paper);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+  animation: log-toast-in .25s ease both;
+}
+@keyframes log-toast-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { transform: translateX(0); }
+}
+@media (max-width: 640px) {
+  .log-toast-stack { width: 54%; }
+  .log-toast-line { font-size: 10.5px; padding: 5px 8px; }
 }
 
 .actions-row {
@@ -561,6 +630,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
   width: 100%;
+  flex-shrink: 0;
 }
 
 .hand-label {
@@ -576,6 +646,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   justify-content: center;
   gap: 10px;
   margin-top: 4px;
+  flex-shrink: 0;
   flex-wrap: wrap;
 }
 .hand-label-row .hand-label { margin-top: 0; }
@@ -600,6 +671,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .hand-row-outer {
   width: 100%;
   padding-top: 40px; /* room for hover-lift + tooltip above the row */
+  flex-shrink: 0;
 }
 .hand-row {
   position: relative;

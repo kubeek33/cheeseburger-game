@@ -916,7 +916,7 @@ let rulesOpen = false;
    which modal is open, hand view mode, main menu. In online mode the whole
    of G gets pushed to Firebase and broadcast to every connected client, so
    anything that lives on G is effectively shared; this stays purely local. */
-let LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null };
+let LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null, logToasts: [], lastLogSeq: undefined, logToastTimer: null };
 
 function currentPlayer() { return G.players[G.currentPlayerIndex]; }
 function otherPlayers() { return G.players.filter(p => p.id !== currentPlayer().id); }
@@ -929,7 +929,14 @@ function isMe(playerId) {
   if (G && G.online) return !!(ONLINE && ONLINE.myId === playerId);
   return true;
 }
-function addLog(msg) { G.log.unshift(msg); if (G.log.length > 40) G.log.pop(); }
+function addLog(msg) {
+  G.log.unshift(msg);
+  if (G.log.length > 40) G.log.pop();
+  // Monotonic counter rather than diffing text — two different actions can
+  // produce byte-identical log lines (e.g. Shoplifter against the same
+  // players twice in a row), which would otherwise look like "nothing new".
+  G.logSeq = (G.logSeq || 0) + 1;
+}
 
 function newGame(names, options) {
   options = options || {};
@@ -939,11 +946,11 @@ function newGame(names, options) {
   const deck = shuffle(buildDeck());
   const burgerPile = shuffle(buildBurgerPile());
   const players = names.map((name, i) => ({ id: i, name, hand: [], burgers: [], isBot: !!isBotFlags[i], difficulty }));
-  LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null };
+  LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null, logToasts: [], lastLogSeq: undefined, logToastTimer: null };
   G = {
     players, drawPile: deck, discardPile: [], burgerPile,
     currentPlayerIndex: 0, movesLeft: 3,
-    log: [], phase: 'pass', passTarget: 0, passPurpose: 'startTurn',
+    log: [], logSeq: 0, phase: 'pass', passTarget: 0, passPurpose: 'startTurn',
     tradeState: null, pendingReveal: null, winner: null, endReason: null,
     newCardIds: new Set(), newCardTimer: null,
     vsBots, online: !!options.online,
@@ -1674,7 +1681,7 @@ function restartSameGame() {
 function exitToSetup() {
   if (ONLINE) onlineLeaveRoom();
   G = null;
-  LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null };
+  LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null, logToasts: [], lastLogSeq: undefined, logToastTimer: null };
   render();
 }
 function menuButtonHtml() {
@@ -1823,7 +1830,6 @@ function renderBotThinking(bot, message) {
         <h2>🤖 ${escapeHtml(bot.name)}</h2>
       </div>
       ${renderTable(currentPlayer())}
-      <div class="log-box">${G.log.slice(0, 6).map(l => `<div>${escapeHtml(l)}</div>`).join('')}</div>
       <div class="bot-thinking-banner">${message}</div>
     </div>
     ${renderMainMenuModal()}
@@ -2092,7 +2098,6 @@ function renderOnlineWaiting(message) {
     <div class="screen board">
       <div class="top-row"><h2>⏳ ${t('waitingTitle')}</h2></div>
       ${renderTable(currentPlayer())}
-      <div class="log-box">${G.log.slice(0, 6).map(l => `<div>${escapeHtml(l)}</div>`).join('')}</div>
       <div class="bot-thinking-banner">${message}</div>
     </div>
     ${renderMainMenuModal()}
@@ -2145,7 +2150,6 @@ function renderGame() {
 
       ${renderTable(p)}
 
-      <div class="log-box">${G.log.slice(0, 6).map(l => `<div>${escapeHtml(l)}</div>`).join('')}</div>
 
       <div class="actions-row">
         <button class="btn-gold" ${G.movesLeft <= 0 ? 'disabled' : ''} onclick="openMakeBurgerModal()">${t('makeBurgerBtn')}</button>
@@ -2189,9 +2193,8 @@ function renderOnlineGame() {
         </div>
       </div>
 
-      ${renderTable(active)}
+      ${renderTable(active, ONLINE.myId)}
 
-      <div class="log-box">${G.log.slice(0, 6).map(l => `<div>${escapeHtml(l)}</div>`).join('')}</div>
 
       <div class="actions-row">
         <button class="btn-gold" ${isMyTurn && G.movesLeft > 0 ? '' : 'disabled'} onclick="openMakeBurgerModal()">${t('makeBurgerBtn')}</button>
@@ -2413,28 +2416,70 @@ function reorderHand(fromIdx, toIdx) {
 /* ---- Round table with seats around the rim (dashed circle guide, no table prop) ---- */
 const SEAT_AVATARS = ['🧑', '👩', '🧔', '👨', '👩‍🦱', '👨‍🦰', '🧑‍🦳', '👱'];
 
-function renderTable(activePlayer) {
+/* viewerId defaults to the active player (correct for hotseat/vs-bots,
+   where only the current player ever sees this screen); online mode passes
+   ONLINE.myId explicitly so every connected device sees itself at the
+   bottom of the table regardless of whose turn it actually is. */
+function renderTable(activePlayer, viewerId) {
   const N = G.players.length;
+  const vId = viewerId != null ? viewerId : activePlayer.id;
+  const viewerIdx = Math.max(0, G.players.findIndex(p => p.id === vId));
   const RX = 38, RY = 38; // radii in % of table-wrap box — leaves room for seat width so it doesn't clip on narrow screens
   const seats = G.players.map((pl, i) => {
-    const angle = (-90 + i * (360 / N)) * (Math.PI / 180);
+    const rel = (i - viewerIdx + N) % N;
+    const angle = (90 + rel * (360 / N)) * (Math.PI / 180); // 90° = bottom, where the viewer always sits
     const x = 50 + RX * Math.cos(angle);
     const y = 50 + RY * Math.sin(angle);
     return renderSeat(pl, pl.id === activePlayer.id, x, y, i);
   }).join('');
 
+  pushLogToasts();
   return `
-    <div class="table-wrap">
-      <div class="table-felt"></div>
-      <div class="table-center">
-        ${renderMiniPile('draw', G.drawPile.length, t('pileDraw'))}
-        ${renderMiniPile('discard', G.discardPile.length, t('pileDiscard'), G.discardPile[G.discardPile.length - 1])}
-        ${renderMiniPile('burger', G.burgerPile.length, t('pileBurgers'))}
+    <div class="table-region-flex">
+      <div class="table-wrap">
+        <div class="table-felt"></div>
+        <div class="table-center">
+          ${renderMiniPile('draw', G.drawPile.length, t('pileDraw'))}
+          ${renderMiniPile('discard', G.discardPile.length, t('pileDiscard'), G.discardPile[G.discardPile.length - 1])}
+          ${renderMiniPile('burger', G.burgerPile.length, t('pileBurgers'))}
+        </div>
+        ${seats}
+        ${renderLogToasts()}
       </div>
-      ${seats}
     </div>
     ${renderEffectToast()}
   `;
+}
+
+/* ---------------- Dota-style transient move log (left side, self-fading) ----------------
+   Purely local/per-device (LOCAL_UI, never synced) but driven by the shared
+   G.log, so it reacts correctly whether THIS device caused the new entry or
+   just received it via the Firebase sync — either way the toast appears
+   here the moment the change shows up in a render. */
+function pushLogToasts() {
+  if (!LOCAL_UI.logToasts) LOCAL_UI.logToasts = [];
+  const seq = G.logSeq || 0;
+  if (LOCAL_UI.lastLogSeq === undefined) { LOCAL_UI.lastLogSeq = seq; return; } // first render of a game: nothing "new" to announce
+  const delta = seq - LOCAL_UI.lastLogSeq;
+  if (delta <= 0) return;
+  const count = Math.min(delta, G.log.length, 5); // safety cap if a lot changed at once
+  LOCAL_UI.lastLogSeq = seq;
+  G.log.slice(0, count).reverse().forEach(text => {
+    LOCAL_UI.logToasts.push({ text, key: Date.now() + '-' + Math.random() });
+  });
+  if (LOCAL_UI.logToasts.length > 6) LOCAL_UI.logToasts = LOCAL_UI.logToasts.slice(-6);
+  clearTimeout(LOCAL_UI.logToastTimer);
+  LOCAL_UI.logToastTimer = setTimeout(() => {
+    LOCAL_UI.logToasts = [];
+    renderLocal();
+  }, 5000);
+}
+function renderLogToasts() {
+  if (!LOCAL_UI.logToasts || !LOCAL_UI.logToasts.length) return '';
+  const lines = LOCAL_UI.logToasts.slice().reverse().map((entry, i) =>
+    `<div class="log-toast-line" style="opacity:${Math.max(0.3, 1 - i * 0.16)}" data-key="${entry.key}">${escapeHtml(entry.text)}</div>`
+  ).join('');
+  return `<div class="log-toast-stack">${lines}</div>`;
 }
 
 /* Mini card-stack visual for the three central piles. 'discard' gets a
