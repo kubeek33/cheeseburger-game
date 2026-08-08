@@ -2123,18 +2123,6 @@ function renderCard(card, selectable, onclick, selected, fanStyle, reason, suppr
     </div>`;
 }
 
-/* Fan-of-cards inline style: rotate + arc lift, like holding cards by hand */
-function fanCardStyle(index, total) {
-  if (total <= 1) return '';
-  const mid = (total - 1) / 2;
-  const offset = index - mid;
-  const maxRotate = 26; // total spread in degrees, clamped for large hands
-  const step = Math.min(9, maxRotate / total);
-  const rot = (offset * step).toFixed(2);
-  const ty = Math.min(30, Math.pow(offset, 2) * 2.6).toFixed(1);
-  return `--rot:${rot}deg; --ty:${ty}px; z-index:${index};`;
-}
-
 /* ---- Main game screen ---- */
 function renderGame() {
   const p = currentPlayer();
@@ -2177,6 +2165,7 @@ function renderGame() {
     ${renderMainMenuModal()}
     ${renderRulesModal()}
   `;
+  layoutHandRow();
   if (!LOCAL_UI.handGrouped) setupHandDrag();
 }
 
@@ -2222,6 +2211,7 @@ function renderOnlineGame() {
     ${renderMainMenuModal()}
     ${renderRulesModal()}
   `;
+  layoutHandRow();
   if (isMyTurn && !LOCAL_UI.handGrouped) setupHandDrag();
 }
 
@@ -2231,16 +2221,14 @@ function toggleHandGrouped() {
 }
 
 function renderFanHand(p, forceDisabled) {
-  return `
-    <div class="hand-scroll">
-      <div class="hand fan-hand">
-        ${p.hand.map((c, i) => forceDisabled
-          ? renderCard(c, false, null, false, fanCardStyle(i, p.hand.length), t('notYourTurn'))
-          : renderHandCard(c, p, i, p.hand.length)
-        ).join('')}
-      </div>
-    </div>
-  `;
+  const itemsHtml = p.hand.map(c => {
+    const { usable, handler, reason } = forceDisabled
+      ? { usable: false, handler: null, reason: t('notYourTurn') }
+      : cardUsability(c, p);
+    const cardHtml = renderCard(c, usable, usable && handler ? handler : null, false, null, reason);
+    return `<div class="hcard-item${usable ? '' : ' disabled-item'}">${cardHtml}</div>`;
+  }).join('');
+  return `<div class="hand-row-outer"><div class="hand-row">${itemsHtml}</div></div>`;
 }
 
 /* Group identical cards into stacks (same type+kind), wraps to extra rows
@@ -2262,11 +2250,12 @@ function computeHandGroups(hand) {
 
 function renderGroupedHand(p, forceDisabled) {
   const groups = computeHandGroups(p.hand);
-  return `
-    <div class="hand grouped-hand">
-      ${groups.map(g => renderStackCard(g, p, forceDisabled)).join('')}
-    </div>
-  `;
+  const itemsHtml = groups.map(g => {
+    const front = g.cards[g.cards.length - 1];
+    const { usable } = forceDisabled ? { usable: false } : cardUsability(front, p);
+    return `<div class="hcard-item${usable ? '' : ' disabled-item'}">${renderStackCard(g, p, forceDisabled)}</div>`;
+  }).join('');
+  return `<div class="hand-row-outer"><div class="hand-row">${itemsHtml}</div></div>`;
 }
 
 function renderStackCard(group, p, forceDisabled) {
@@ -2327,10 +2316,42 @@ function cardUsability(c, p) {
   return { usable, handler, reason };
 }
 
+/* ---------------- Hand row layout: dynamic overlap ----------------
+   Cards sit in a fixed-width row with no background. Overlap between
+   neighbors shrinks as the hand grows so it always fits the row without
+   spilling past its bounds; with fewer cards each one shows more of
+   itself. Positioning is computed here rather than in CSS because it
+   depends on the actual rendered card count and container width. */
+function layoutHandRow() {
+  const row = app.querySelector('.hand-row');
+  if (!row) return;
+  const items = Array.from(row.children);
+  if (!items.length) { row.style.height = ''; return; }
+  const containerW = row.clientWidth;
+  const cardRect = items[0].getBoundingClientRect();
+  const cardW = cardRect.width, cardH = cardRect.height;
+  const n = items.length;
+  const available = Math.max(0, containerW - cardW);
+  const naturalStep = cardW * 0.42;
+  const minStep = cardW * 0.12;
+  const forced = n > 1 ? available / (n - 1) : naturalStep;
+  const step = Math.max(minStep, Math.min(naturalStep, forced));
+  const totalWidth = cardW + step * (n - 1);
+  const startX = Math.max(0, (containerW - totalWidth) / 2);
+  items.forEach((el, i) => {
+    const x = startX + i * step;
+    el.style.transform = `translateX(${x}px)`;
+    el.style.zIndex = i;
+    el.dataset.baseX = x;
+  });
+  row.style.height = cardH + 'px';
+}
+window.addEventListener('resize', () => { if (app.querySelector('.hand-row')) layoutHandRow(); });
+
 /* ---------------- Drag-to-reorder hand (pointer events: works for mouse + touch) ---------------- */
 
 function setupHandDrag() {
-  const container = app.querySelector('.fan-hand');
+  const container = app.querySelector('.hand-row');
   if (!container) return;
   Array.from(container.children).forEach(el => {
     el.addEventListener('pointerdown', onHandCardPointerDown);
@@ -2341,6 +2362,7 @@ function onHandCardPointerDown(e) {
   const el = e.currentTarget;
   const container = el.parentElement;
   const startIdx = Array.from(container.children).indexOf(el);
+  const baseX = parseFloat(el.dataset.baseX) || 0;
   const startX = e.clientX, startY = e.clientY;
   let moved = false;
 
@@ -2348,10 +2370,10 @@ function onHandCardPointerDown(e) {
     const dx = ev.clientX - startX, dy = ev.clientY - startY;
     if (!moved && Math.hypot(dx, dy) > 6) {
       moved = true;
-      el.classList.add('card-dragging');
+      el.classList.add('dragging');
     }
     if (moved) {
-      el.style.transform = `translate(${dx}px, ${dy}px) scale(1.1)`;
+      el.style.transform = `translate(${baseX + dx}px, ${dy}px) scale(1.1)`;
       ev.preventDefault();
     }
   }
@@ -2359,8 +2381,7 @@ function onHandCardPointerDown(e) {
     document.removeEventListener('pointermove', onMove);
     document.removeEventListener('pointerup', onUp);
     if (moved) {
-      el.classList.remove('card-dragging');
-      el.style.transform = '';
+      el.classList.remove('dragging');
       const dropIdx = computeDropIndex(container, ev.clientX, el);
       reorderHand(startIdx, dropIdx);
     }
@@ -2387,12 +2408,6 @@ function reorderHand(fromIdx, toIdx) {
   const insertAt = toIdx > fromIdx ? toIdx - 1 : toIdx;
   p.hand.splice(insertAt, 0, card);
   render();
-}
-
-function renderHandCard(c, p, index, total) {
-  const fanStyle = fanCardStyle(index, total);
-  const { usable, handler, reason } = cardUsability(c, p);
-  return renderCard(c, usable, usable && handler ? handler : null, false, fanStyle, reason);
 }
 
 /* ---- Round table with seats around the rim (dashed circle guide, no table prop) ---- */
@@ -2442,7 +2457,7 @@ function renderMiniPile(kind, count, label, topCard) {
   const frontImg = frontSrc
     ? `<img class="mini-card-img" src="${frontSrc}" alt="" draggable="false" />`
     : '';
-  const innerBadge = frontIsFaceUp ? '' : `<div class="mini-card-count">${count}</div><div class="mini-card-label">${label}</div>`;
+  const innerBadge = frontIsFaceUp ? '' : `<div class="mini-card-count">${count}</div>`;
   const outerBadge = frontIsFaceUp ? `<div class="mini-pile-count-badge">${count}</div>` : '';
   return `
     <div class="mini-pile">
@@ -2454,7 +2469,7 @@ function renderMiniPile(kind, count, label, topCard) {
         </div>
         ${outerBadge}
       </div>
-      ${frontIsFaceUp ? `<div class="mini-pile-label">${label}</div>` : ''}
+      <div class="mini-pile-label">${label}</div>
     </div>
   `;
 }

@@ -390,16 +390,6 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   text-shadow: 0 2px 3px rgba(0,0,0,0.6);
   background: rgba(0,0,0,0.15);
 }
-.mini-card-label {
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  font-size: 9px;
-  font-weight: 700;
-  color: #fff8ec;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.7);
-  padding: 2px 2px 3px;
-  background: linear-gradient(to top, rgba(0,0,0,0.6), rgba(0,0,0,0));
-}
 /* Discard pile: top card shown face-up, count as a small corner badge */
 .mini-pile-count-badge {
   position: absolute;
@@ -489,7 +479,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   .mini-pile { width: 70px; }
   .mini-card-stack { width: 60px; height: 82px; }
   .mini-card-count { font-size: 19px; }
-  .mini-card-label { font-size: 8px; }
+  .mini-pile-label { font-size: 8px; }
   .burger-slot { width: 28px; height: 39px; }
 }
 
@@ -601,48 +591,45 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   min-height: 100px;
 }
 
-/* Fan-of-cards: held like a hand of cards, arced with slight overlap.
-   Wrapper scrolls horizontally with a fixed height so vertical overflow
-   (rotation + arc lift) is never clipped. */
-.hand-scroll {
+/* Player's own hand: no background container, sits right on the table.
+   Fixed-width row — JS computes how much each card overlaps its neighbor so
+   the whole hand always fits without spilling past the row's bounds; fewer
+   cards means less overlap (more of each one visible), more cards means
+   tighter overlap. Positioning (translateX + z-index) is set by
+   layoutHandRow() in app.js, not CSS. */
+.hand-row-outer {
   width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 0;
+  padding-top: 40px; /* room for hover-lift + tooltip above the row */
 }
-.hand.fan-hand {
-  flex-wrap: nowrap;
-  align-items: flex-start;
-  justify-content: center;
-  width: max-content;
-  min-width: 100%;
-  padding: 90px 24px 80px;
+.hand-row {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  margin: 0 auto;
 }
-.fan-hand .card {
-  flex: 0 0 auto;
-  margin-left: -34px;
-  background: var(--paper);
-  transform: rotate(var(--rot, 0deg)) translateY(var(--ty, 0px));
-  transform-origin: bottom center;
-  transition: transform .15s ease, box-shadow .15s ease, margin .15s ease;
+.hcard-item {
+  position: absolute;
+  top: 0;
+  left: 0;
   touch-action: none;
+  transition: transform .18s ease;
 }
-.fan-hand .card:first-child { margin-left: 0; }
-.fan-hand .card.card-dragging {
+.hcard-item:hover { z-index: 999 !important; }
+.hcard-item:hover .card,
+.hcard-item:hover .card-stack-wrap {
+  transform: translateY(-18px) scale(1.06);
+}
+.hcard-item.disabled-item:hover .card,
+.hcard-item.disabled-item:hover .card-stack-wrap {
+  transform: none;
+}
+.hcard-item.dragging {
   transition: none;
-  cursor: grabbing;
+  z-index: 999 !important;
+}
+.hcard-item.dragging .card,
+.hcard-item.dragging .card-stack-wrap {
   box-shadow: 0 14px 28px rgba(0,0,0,0.5);
-  z-index: 300 !important;
-}
-.fan-hand .card:hover {
-  transform: rotate(var(--rot, 0deg)) translateY(calc(var(--ty, 0px) - 16px)) scale(1.06);
-  z-index: 99 !important;
-}
-.fan-hand .card.disabled:hover {
-  transform: rotate(var(--rot, 0deg)) translateY(var(--ty, 0px));
-}
-@media (max-width: 640px) {
-  .fan-hand .card { margin-left: -46px; }
 }
 
 .card {
@@ -691,9 +678,9 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 /* Entrance animation for freshly drawn/received cards — keeps the fan's own
    rotate/lift (--rot/--ty) intact so it doesn't "snap" once the animation ends */
 @keyframes card-pop-in {
-  0% { opacity: 0; transform: rotate(var(--rot, 0deg)) translateY(calc(var(--ty, 0px) + 46px)) scale(0.8); }
-  60% { opacity: 1; transform: rotate(var(--rot, 0deg)) translateY(calc(var(--ty, 0px) - 8px)) scale(1.05); }
-  100% { opacity: 1; transform: rotate(var(--rot, 0deg)) translateY(var(--ty, 0px)) scale(1); }
+  0% { opacity: 0; transform: translateY(46px) scale(0.8); }
+  60% { opacity: 1; transform: translateY(-8px) scale(1.05); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 .card.card-new, .card-stack-wrap.card-new {
   animation: card-pop-in .55s cubic-bezier(.34, 1.56, .64, 1) both;
@@ -705,7 +692,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .card-new-badge {
   position: absolute;
   top: -9px;
-  right: -8px;
+  left: -8px;
   background: var(--accent-2);
   color: var(--ink);
   font-size: 8.5px;
@@ -719,20 +706,14 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 }
 
 /* Grouped/stacked hand view — identical cards pile on top of one another
-   with a peek of "shadow" cards behind + a ×N count badge. Wraps to as many
-   rows as needed instead of scrolling sideways. */
-.grouped-hand {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-content: flex-start;
-  gap: 18px 10px;
-  padding: 10px 14px 20px;
-}
+   with a peek of "shadow" cards behind + a ×N count badge. Positioned in
+   the row exactly like a single card (see .hcard-item above) — fewer stacks
+   than raw cards just means more breathing room from the same overlap math. */
 .card-stack-wrap {
   position: relative;
   width: 100px;
   height: 136px;
+  transition: transform .16s ease, box-shadow .16s ease;
 }
 .card-stack-wrap .card {
   position: absolute;
@@ -740,6 +721,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   left: 0;
   margin: 0;
 }
+.card-stack-wrap .card:hover { transform: none; } /* the stack wrapper handles the hover-lift, not the front card itself */
 .stack-shadow {
   position: absolute;
   top: 0;
@@ -751,10 +733,13 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   border-radius: 14px;
   z-index: -1;
 }
+/* Sits bottom-left (not bottom-right) because in the hand row, cards later
+   in the row overlap the RIGHT side of every card before them — bottom-left
+   is the one corner that's never covered by a neighbor. */
 .stack-count {
   position: absolute;
   bottom: -8px;
-  right: -8px;
+  left: -8px;
   background: var(--ink);
   color: var(--paper);
   border: 2px solid var(--accent-2);
@@ -765,7 +750,6 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   box-shadow: 0 2px 5px rgba(0,0,0,0.45);
   z-index: 6;
 }
-.stack-new-badge { top: -9px; left: -8px; right: auto; }
 .card.disabled:hover { transform: none; }
 
 .card-tooltip {
