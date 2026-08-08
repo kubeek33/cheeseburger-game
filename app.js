@@ -343,6 +343,7 @@ const STRINGS = {
     burgerProgress: (sum, threshold) => `${sum}/${threshold} 🍔`,
     burgerTooltip: (v) => `Чізбургер — ${v} 🍔`,
     burgerTooltipFly: (v) => `Чізбургер — ${v} 🍔 (не рахується, поки не прибрати муху 🪰)`,
+    burgerRevealText: (v) => `🍔 Тобі випав чізбургер номіналом ${v}!`,
     foodTruckRevealTitle: 'Фудтрак — відкриті карти:',
     makeBurgerModalTitle: '🍔 Приготувати чізбургер',
     classicOption: (ok) => `Класичний рецепт — усі 5 інгредієнтів ${ok ? '✅' : '❌ (бракує інгредієнтів)'}`,
@@ -495,6 +496,7 @@ const STRINGS = {
     burgerProgress: (sum, threshold) => `${sum}/${threshold} 🍔`,
     burgerTooltip: (v) => `Cheeseburger — ${v} 🍔`,
     burgerTooltipFly: (v) => `Cheeseburger — ${v} 🍔 (doesn't count until the fly is removed 🪰)`,
+    burgerRevealText: (v) => `🍔 You got a value-${v} cheeseburger!`,
     foodTruckRevealTitle: 'Food Truck — revealed cards:',
     makeBurgerModalTitle: '🍔 Make a cheeseburger',
     classicOption: (ok) => `Classic recipe — all 5 ingredients ${ok ? '✅' : '❌ (missing ingredients)'}`,
@@ -914,10 +916,19 @@ let rulesOpen = false;
    which modal is open, hand view mode, main menu. In online mode the whole
    of G gets pushed to Firebase and broadcast to every connected client, so
    anything that lives on G is effectively shared; this stays purely local. */
-let LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false };
+let LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null };
 
 function currentPlayer() { return G.players[G.currentPlayerIndex]; }
 function otherPlayers() { return G.players.filter(p => p.id !== currentPlayer().id); }
+/* Online: everyone's shared table renders all seats at once, so anything
+   that should be private (a player's own burger score/value) must be
+   gated by "is this actually my seat" rather than by turn order. In
+   hotseat/vs-bots the screen itself is already private per player, so
+   treat every seat as "mine" there. */
+function isMe(playerId) {
+  if (G && G.online) return !!(ONLINE && ONLINE.myId === playerId);
+  return true;
+}
 function addLog(msg) { G.log.unshift(msg); if (G.log.length > 40) G.log.pop(); }
 
 function newGame(names, options) {
@@ -928,7 +939,7 @@ function newGame(names, options) {
   const deck = shuffle(buildDeck());
   const burgerPile = shuffle(buildBurgerPile());
   const players = names.map((name, i) => ({ id: i, name, hand: [], burgers: [], isBot: !!isBotFlags[i], difficulty }));
-  LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false };
+  LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null };
   G = {
     players, drawPile: deck, discardPile: [], burgerPile,
     currentPlayerIndex: 0, movesLeft: 3,
@@ -1045,9 +1056,26 @@ function distinctIngredientKinds(p) {
 }
 
 function giveBurgerCard(p) {
-  if (G.burgerPile.length === 0) { addLog(t('burgerPileEmpty')); return; }
+  if (G.burgerPile.length === 0) { addLog(t('burgerPileEmpty')); return null; }
   const card = G.burgerPile.pop();
   p.burgers.push({ id: card.id, value: card.value, fly: false });
+  return card;
+}
+
+/* Shown only on the maker's own device (LOCAL_UI is never synced) — the
+   burger's value stays hidden from opponents even though the action itself
+   is public. */
+function showBurgerReveal(value) {
+  LOCAL_UI.burgerReveal = { value, key: Date.now() + '-' + Math.random() };
+  clearTimeout(LOCAL_UI.burgerRevealTimer);
+  LOCAL_UI.burgerRevealTimer = setTimeout(() => {
+    LOCAL_UI.burgerReveal = null;
+    renderLocal();
+  }, 2400);
+}
+function renderBurgerReveal() {
+  if (!LOCAL_UI.burgerReveal) return '';
+  return `<div class="burger-reveal-toast" data-key="${LOCAL_UI.burgerReveal.key}">${t('burgerRevealText', LOCAL_UI.burgerReveal.value)}</div>`;
 }
 
 function removeFromHand(p, predicate) {
@@ -1063,10 +1091,11 @@ function doMakeClassic() {
     const card = removeFromHand(p, c => c.type === 'ingredient' && c.kind === ing.kind);
     G.discardPile.push(card);
   });
-  giveBurgerCard(p);
+  const burgerCard = giveBurgerCard(p);
   G.movesLeft--;
   addLog(t('madeClassic', p.name));
   triggerEffect('🍔✨', t('fxBurger'), p.id);
+  if (burgerCard) showBurgerReveal(burgerCard.value);
   afterBurgerMade();
 }
 
@@ -1082,10 +1111,11 @@ function doMakeGrandma(overrideKinds) {
     const card = removeFromHand(p, c => c.type === 'ingredient' && c.kind === kind);
     if (card) G.discardPile.push(card);
   });
-  giveBurgerCard(p);
+  const burgerCard = giveBurgerCard(p);
   G.movesLeft--;
   addLog(t('madeGrandma', p.name));
   triggerEffect('🍔✨', t('fxBurger'), p.id);
+  if (burgerCard) showBurgerReveal(burgerCard.value);
   LOCAL_UI.modal = null;
   afterBurgerMade();
 }
@@ -1644,7 +1674,7 @@ function restartSameGame() {
 function exitToSetup() {
   if (ONLINE) onlineLeaveRoom();
   G = null;
-  LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false };
+  LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null };
   render();
 }
 function menuButtonHtml() {
@@ -2143,6 +2173,7 @@ function renderGame() {
     </div>
     ${renderModal()}
     ${renderPendingReveal()}
+    ${renderBurgerReveal()}
     ${renderMainMenuModal()}
     ${renderRulesModal()}
   `;
@@ -2187,6 +2218,7 @@ function renderOnlineGame() {
     </div>
     ${isMyTurn ? renderModal() : ''}
     ${isMyTurn ? renderPendingReveal() : ''}
+    ${renderBurgerReveal()}
     ${renderMainMenuModal()}
     ${renderRulesModal()}
   `;
@@ -2428,8 +2460,9 @@ function renderMiniPile(kind, count, label, topCard) {
 }
 
 function renderSeat(pl, isActive, x, y, i) {
+  const mine = isMe(pl.id);
   const validSum = pl.burgers.filter(b => !b.fly).reduce((s, b) => s + b.value, 0);
-  const burgerLabel = t('burgerProgress', validSum, WIN_THRESHOLD);
+  const burgerStat = mine ? `<span>🍔 ${t('burgerProgress', validSum, WIN_THRESHOLD)}</span>` : '';
   return `
     <div class="seat ${isActive ? 'active' : ''}" style="left:${x}%; top:${y}%;">
       ${renderSeatEffectToast(pl)}
@@ -2440,12 +2473,12 @@ function renderSeat(pl, isActive, x, y, i) {
       <div class="seat-name">${escapeHtml(pl.name)}</div>
       <div class="seat-stats">
         <span>🃏 ${pl.hand.length}</span>
-        <span>🍔 ${burgerLabel}</span>
+        ${burgerStat}
       </div>
       <div class="burger-slots">
         ${pl.burgers.map(b => `<div class="burger-slot ${b.fly ? 'fly' : ''}">
             <img class="burger-slot-img" src="${BACK_ART.burger}" alt="" draggable="false" />
-            <div class="card-tooltip">${b.fly ? t('burgerTooltipFly', b.value) : t('burgerTooltip', b.value)}</div>
+            ${mine ? `<div class="card-tooltip">${b.fly ? t('burgerTooltipFly', b.value) : t('burgerTooltip', b.value)}</div>` : ''}
             ${b.fly ? '<span class="burger-slot-fly">🪰</span>' : ''}
           </div>`).join('')}
       </div>
@@ -2598,6 +2631,23 @@ function wrapModal(title, body, showClose) {
 }
 
 /* ---- End screen ---- */
+/* Randomized per-piece via inline style since CSS alone can't vary position/
+   timing/color across N elements without one rule per piece. */
+function generateConfettiHtml(n) {
+  const colors = ['#ffb703', '#fb8500', '#e63946', '#2a9d8f', '#a663cc', '#f4a261', '#e9c46a'];
+  let html = '';
+  for (let i = 0; i < n; i++) {
+    const left = (Math.random() * 100).toFixed(1);
+    const delay = (Math.random() * 1.2).toFixed(2);
+    const duration = (2.2 + Math.random() * 1.6).toFixed(2);
+    const color = colors[i % colors.length];
+    const rotate = Math.floor(Math.random() * 360);
+    const wide = i % 3 === 0;
+    html += `<div class="confetti-piece" style="left:${left}%; animation-delay:${delay}s; animation-duration:${duration}s; background:${color}; transform:rotate(${rotate}deg); ${wide ? 'width:10px;height:10px;border-radius:50%;' : ''}"></div>`;
+  }
+  return html;
+}
+
 function renderEnd() {
   const winners = G.winner;
   const rows = [...G.players].sort((a, b) => {
@@ -2607,19 +2657,22 @@ function renderEnd() {
   });
   const headers = t('winnerTableHeaders');
   app.innerHTML = `
+    <div class="confetti-container">${generateConfettiHtml(80)}</div>
     <div class="screen end-screen">
-      <div class="card-emoji">🏆</div>
-      <div class="winner-name">${winners.map(w => escapeHtml(w.name)).join(' & ')}</div>
-      <div class="subtitle">${escapeHtml(G.endReason)}</div>
-      <table class="final-table">
-        <tr><th>${headers[0]}</th><th>${headers[1]}</th><th>${headers[2]}</th></tr>
-        ${rows.map(pl => {
-          const valid = pl.burgers.filter(b => !b.fly).reduce((s, b) => s + b.value, 0);
-          const flies = pl.burgers.filter(b => b.fly).length;
-          return `<tr><td>${escapeHtml(pl.name)}</td><td>${valid}</td><td>${flies}</td></tr>`;
-        }).join('')}
-      </table>
-      <button class="btn-primary" onclick="location.reload()">${t('newGameBtn')}</button>
+      <div class="end-card">
+        <div class="card-emoji">🏆</div>
+        <div class="winner-name">${winners.map(w => escapeHtml(w.name)).join(' & ')}</div>
+        <div class="subtitle">${escapeHtml(G.endReason)}</div>
+        <table class="final-table">
+          <tr><th>${headers[0]}</th><th>${headers[1]}</th><th>${headers[2]}</th></tr>
+          ${rows.map(pl => {
+            const valid = pl.burgers.filter(b => !b.fly).reduce((s, b) => s + b.value, 0);
+            const flies = pl.burgers.filter(b => b.fly).length;
+            return `<tr><td>${escapeHtml(pl.name)}</td><td>${valid}</td><td>${flies}</td></tr>`;
+          }).join('')}
+        </table>
+        <button class="btn-primary" onclick="location.reload()">${t('newGameBtn')}</button>
+      </div>
     </div>
   `;
 }
