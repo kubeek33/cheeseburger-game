@@ -350,7 +350,7 @@ const STRINGS = {
     burgerRevealText: (v) => `🍔 Тобі випав чізбургер номіналом ${v}!`,
     foodTruckRevealTitle: 'Фудтрак — відкриті карти:',
     makeBurgerModalTitle: '🍔 Приготувати чізбургер',
-    classicOption: (ok) => `Класичний рецепт — усі 5 інгредієнтів ${ok ? '✅' : '❌ (бракує інгредієнтів)'}`,
+    classicOption: (ok, missingNames) => `Класичний рецепт — усі 5 інгредієнтів ${ok ? '✅' : `❌ (бракує: ${missingNames})`}`,
     makeClassicBtn: '🍔 Приготувати класичний бургер',
     grandmaHint: '👵 Бабусин рецепт — обери рівно 3 різні інгредієнти:',
     grandmaConfirm: (n) => `Приготувати за бабусиним рецептом (${n}/3)`,
@@ -507,7 +507,7 @@ const STRINGS = {
     burgerRevealText: (v) => `🍔 You got a value-${v} cheeseburger!`,
     foodTruckRevealTitle: 'Food Truck — revealed cards:',
     makeBurgerModalTitle: '🍔 Make a cheeseburger',
-    classicOption: (ok) => `Classic recipe — all 5 ingredients ${ok ? '✅' : '❌ (missing ingredients)'}`,
+    classicOption: (ok, missingNames) => `Classic recipe — all 5 ingredients ${ok ? '✅' : `❌ (missing: ${missingNames})`}`,
     makeClassicBtn: '🍔 Make the classic burger',
     grandmaHint: "👵 Grandma's Recipe — pick exactly 3 different ingredients:",
     grandmaConfirm: (n) => `Make it with Grandma's Recipe (${n}/3)`,
@@ -589,11 +589,39 @@ function t(key, ...args) {
 
 /* ---------------- Rules text ---------------- */
 
+/* Actual card art in the rules — the components list said "60 ingredient
+   cards, 30 action cards, 18 burger cards" but a first-time reader has no
+   idea what those look like until they're already mid-game. */
+function rulesCardGalleryHtml() {
+  const uk = LANG === 'uk';
+  const row = (label, cardsHtml) => `
+    <div class="rules-gallery-row">
+      <div class="rules-gallery-label">${escapeHtml(label)}</div>
+      <div class="rules-gallery-cards">${cardsHtml}</div>
+    </div>
+  `;
+  const ingredientCards = INGREDIENTS.map(i => renderCard({ id: 'rules-' + i.kind, type: 'ingredient', kind: i.kind }, true, null, false, null, null, true)).join('');
+  const actionCards = ACTIONS.map(a => renderCard({ id: 'rules-' + a.kind, type: 'action', kind: a.kind }, true, null, false, null, null, true)).join('');
+  const burgerCards = `
+    <div class="card burger-front"><img class="card-art-img" src="${BURGER_FRONT_ART[1]}" alt="" draggable="false" /></div>
+    <div class="card burger-front"><img class="card-art-img" src="${BURGER_FRONT_ART[2]}" alt="" draggable="false" /></div>
+    <div class="card burger-front"><img class="card-art-img" src="${BACK_ART.burger}" alt="" draggable="false" /></div>
+  `;
+  return `
+    <div class="rules-card-gallery">
+      ${row(uk ? 'Інгредієнти' : 'Ingredients', ingredientCards)}
+      ${row(uk ? 'Карти дій' : 'Action cards', actionCards)}
+      ${row(uk ? 'Чізбургери (номінал 1, 2, сорочка)' : 'Burgers (value 1, 2, face-down)', burgerCards)}
+    </div>
+  `;
+}
+
 function rulesHtml() {
   const uk = LANG === 'uk';
   const ingredientNames = INGREDIENTS.map(i => mName(i)).join(', ');
   const actionCountsLine = ACTIONS.map(a => `${mName(a)} ×${ACTION_COUNTS[a.kind]}`).join(', ');
   const actionListItems = ACTIONS.map(a => `<li><b>${a.ic} ${mName(a)}</b> — ${mDesc(a)}</li>`).join('');
+  const cardGallery = rulesCardGalleryHtml();
 
   if (uk) {
     return `
@@ -608,6 +636,7 @@ function rulesHtml() {
         <li><b>30 карт дій</b> — ${actionCountsLine}.</li>
         <li><b>18 карт чізбургерів</b> (окрема колода, сорочкою догори) — ${BURGER_PILE_SINGLES} карток вартістю 1 і ${BURGER_PILE_DOUBLES} карток вартістю 2.</li>
       </ul>
+      ${cardGallery}
 
       <h4>Підготовка</h4>
       <ol>
@@ -662,6 +691,7 @@ function rulesHtml() {
       <li><b>30 action cards</b> — ${actionCountsLine}.</li>
       <li><b>18 burger cards</b> (a separate face-down deck) — ${BURGER_PILE_SINGLES} cards worth 1 and ${BURGER_PILE_DOUBLES} cards worth 2.</li>
     </ul>
+    ${cardGallery}
 
     <h4>Setup</h4>
     <ol>
@@ -1078,6 +1108,10 @@ function confirmPassReveal() {
 function canMakeClassic(p) {
   const kinds = new Set(p.hand.filter(c => c.type === 'ingredient').map(c => c.kind));
   return INGREDIENTS.every(i => kinds.has(i.kind));
+}
+function missingClassicIngredients(p) {
+  const kinds = new Set(p.hand.filter(c => c.type === 'ingredient').map(c => c.kind));
+  return INGREDIENTS.filter(i => !kinds.has(i.kind));
 }
 function hasGrandmaCard(p) { return p.hand.some(c => c.type === 'action' && c.kind === 'grandma'); }
 function distinctIngredientKinds(p) {
@@ -2591,17 +2625,35 @@ function patchLogToastDOM() {
   if (existing) existing.outerHTML = html || '';
   else if (html) wrap.insertAdjacentHTML('beforeend', html);
 }
+/* Marks/removes only THIS toast's own DOM node (classList/remove()) instead
+   of rebuilding the whole stack via patchLogToastDOM() — that outerHTML
+   swap was recreating every sibling toast line too, restarting their
+   entrance animation and making the whole stack visibly flash/jerk every
+   time any single toast expired. Falls back to a full patch only if the
+   node can't be found (DOM out of sync with LOCAL_UI, e.g. right after an
+   unrelated full render). */
 function scheduleToastRemoval(key) {
   setTimeout(() => {
     const entry = LOCAL_UI.logToasts.find(t => t.key === key);
     if (!entry) return;
     entry.leaving = true;
-    patchLogToastDOM();
+    const el = document.querySelector(`.log-toast-line[data-key="${key}"]`);
+    if (el) el.classList.add('leaving');
+    else patchLogToastDOM();
     setTimeout(() => {
       LOCAL_UI.logToasts = LOCAL_UI.logToasts.filter(t => t.key !== key);
-      patchLogToastDOM();
+      const el2 = document.querySelector(`.log-toast-line[data-key="${key}"]`);
+      if (el2) { el2.remove(); restackToastOpacities(); }
+      else patchLogToastDOM();
     }, 400); // matches the log-toast-out CSS animation duration
   }, 4000);
+}
+function restackToastOpacities() {
+  const stack = document.querySelector('.log-toast-stack');
+  if (!stack) return;
+  Array.from(stack.children).filter(el => !el.classList.contains('leaving')).forEach((el, i) => {
+    el.style.opacity = Math.max(0.3, 1 - i * 0.16);
+  });
 }
 function pushLogToasts() {
   if (!LOCAL_UI.logToasts) LOCAL_UI.logToasts = [];
@@ -2782,7 +2834,7 @@ function renderModal() {
 
     const classicSection = `
       <div>
-        <div class="hint" style="margin-bottom:6px;color:#d9c4a3;font-size:13px;">${t('classicOption', canClassic)}</div>
+        <div class="hint" style="margin-bottom:6px;color:#d9c4a3;font-size:13px;">${t('classicOption', canClassic, missingClassicIngredients(p).map(i => mName(i)).join(', '))}</div>
         <div class="hand">
           ${INGREDIENTS.map(ing => renderCard({ id: 'preview-' + ing.kind, type: 'ingredient', kind: ing.kind }, true, null)).join('')}
         </div>
@@ -2903,6 +2955,14 @@ function generateConfettiHtml(n) {
 }
 
 function renderEnd() {
+  /* The end screen is static once shown (G.winner/endReason don't change
+     after the game is over), but renderLocal() still gets called again for
+     unrelated reasons (settings toggle, a stray timer from a card animation
+     still in flight, an online-sync echo) — each one used to rebuild this
+     whole screen from scratch with a fresh random confetti layout, which
+     looked like the celebration animation restarting/stuttering a few
+     times. Skip the rebuild if it's already showing. */
+  if (app.querySelector('.confetti-container')) return;
   const winners = G.winner;
   const rows = [...G.players].sort((a, b) => {
     const sa = a.burgers.filter(x => !x.fly).reduce((s, x) => s + x.value, 0);
