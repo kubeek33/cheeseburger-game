@@ -237,6 +237,19 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   color: var(--ink);
   font-size: 15px;
 }
+.name-avatar-row { display: flex; gap: 8px; }
+.name-avatar-row input[type="text"]:not(.avatar-input-sm) { flex: 1; min-width: 0; }
+/* Combined selector (not just .avatar-input-sm) so its specificity beats
+   .avatar-input's width:100% regardless of which rule comes first in the
+   file — two equal-specificity single-class rules would otherwise resolve
+   by source order, which is a footgun waiting to flip on the next edit. */
+.avatar-input.avatar-input-sm {
+  flex: 0 0 auto;
+  width: 48px;
+  padding: 10px 4px !important;
+  font-size: 20px !important;
+  text-align: center;
+}
 
 /* Pass device cover */
 .pass-cover {
@@ -308,7 +321,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   position: absolute;
   inset: 10%;
   border-radius: 50%;
-  border: 3px dashed rgba(245, 197, 24, 0.35);
+  border: 2px dashed rgba(245, 197, 24, 0.3);
   background: none;
 }
 
@@ -376,7 +389,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   gap: 5%;
   flex-wrap: nowrap;
   justify-content: center;
-  width: 46%; /* narrow enough to clear the side seats, which sit ~12%–88% across */
+  width: 40%; /* narrow enough to clear the side seats, which sit ~12%–88% across */
 }
 /* Mini card-stack visuals for draw/discard/burger piles */
 .mini-pile {
@@ -450,11 +463,22 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   margin-top: 3px;
 }
 
+/* .seat's own box is sized to just the avatar-ring (its only normal-flow
+   child), so translate(-50%,-50%) centers the AVATAR exactly on the ring
+   line. Name/stats/burger-slots live in .seat-info, absolutely positioned
+   below — they don't affect where the avatar itself lands. */
 .seat {
   position: absolute;
   transform: translate(-50%, -50%);
   z-index: 2;
+}
+.seat-info {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
   width: 112px;
+  margin-top: 4px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -474,6 +498,38 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   box-shadow: 0 4px 10px rgba(0,0,0,0.4);
   transition: transform .2s ease, border-color .2s ease;
 }
+.seat-avatar-ring.pickable { cursor: pointer; }
+.seat-avatar-ring.pickable:hover { transform: scale(1.06); border-color: var(--accent-2); }
+.avatar-input {
+  width: 100%;
+  text-align: center;
+  font-size: 34px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 2px solid var(--panel-light);
+  background: #fff;
+  color: var(--ink);
+  margin-bottom: 14px;
+}
+.avatar-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+.avatar-preset {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  font-size: 22px;
+  border-radius: 10px;
+  background: var(--panel-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.avatar-preset.active { background: var(--accent-2); box-shadow: 0 0 0 2px var(--ink) inset; }
 .seat.active .seat-avatar-ring {
   border-color: var(--accent-2);
   box-shadow: 0 0 0 4px rgba(245,197,24,0.3), 0 4px 14px rgba(0,0,0,0.4);
@@ -501,7 +557,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .seat .burger-slots { justify-content: center; margin-top: 4px; }
 
 @media (max-width: 640px) {
-  .seat { width: 74px; font-size: 9.5px; }
+  .seat-info { width: 74px; font-size: 9.5px; }
   .seat-name { font-size: 10.5px; }
   .seat-avatar-ring { width: 44px; height: 44px; }
   .seat-avatar { font-size: 22px; }
@@ -519,12 +575,14 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   .screen { max-width: 1320px; }
   .table-wrap { max-width: 92%; aspect-ratio: 16 / 8; }
   .mini-card-count { font-size: 30px; }
-  .seat { width: 108px; font-size: 12px; }
+  .seat-info { width: 108px; font-size: 12px; }
   .seat-avatar-ring { width: 68px; height: 68px; }
   .seat-avatar { font-size: 42px; }
   .burger-slot { width: 40px; height: 55px; }
-  .hand-row { max-width: 900px; }
-  .card, .card-stack-wrap { width: 118px; height: 164px; }
+  .hand-row { max-width: 940px; }
+  .card, .card-stack-wrap { width: 132px; height: 184px; }
+  .card, .card-art-clip, .stack-shadow { border-radius: 10px; }
+  .actions-row button { padding: 10px 16px; font-size: 13.5px; }
 }
 
 .opponents {
@@ -583,6 +641,39 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   padding: 6px 14px;
   border: 2px solid var(--panel-light);
 }
+.log-history-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  padding: 0 0 0 4px;
+  line-height: 1;
+  cursor: pointer;
+  filter: grayscale(0.15);
+}
+.log-history-btn:hover { filter: none; }
+.log-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 50vh;
+  overflow-y: auto;
+  margin-bottom: 4px;
+}
+.log-history-line {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--paper);
+  background: var(--panel-light);
+  border-radius: 8px;
+  padding: 7px 11px;
+}
+.log-history-empty {
+  color: #d9c4a3;
+  font-size: 13px;
+  text-align: center;
+  padding: 14px;
+}
 .moves-indicator .dot {
   width: 14px; height: 14px; border-radius: 50%;
   background: var(--panel-light);
@@ -614,11 +705,18 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   line-height: 1.35;
   color: var(--paper);
   box-shadow: 0 4px 10px rgba(0,0,0,0.4);
-  animation: log-toast-in .25s ease both;
+  animation: log-toast-in .3s ease both;
+}
+.log-toast-line.leaving {
+  animation: log-toast-out .4s ease both;
 }
 @keyframes log-toast-in {
   from { opacity: 0; transform: translateX(-10px); }
   to { transform: translateX(0); }
+}
+@keyframes log-toast-out {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(-14px); }
 }
 @media (max-width: 640px) {
   .log-toast-stack { width: 54%; }
@@ -707,7 +805,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .card {
   width: 100px;
   height: 139px;
-  border-radius: 14px;
+  border-radius: 8px; /* matches the ~8% corner radius baked into the card art SVGs */
   border: none;
   display: flex;
   flex-direction: column;
@@ -729,7 +827,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .card-art-clip {
   position: absolute;
   inset: 0;
-  border-radius: 14px;
+  border-radius: 8px;
   overflow: hidden;
 }
 .card:hover { transform: translateY(-4px); }
@@ -802,7 +900,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   height: 136px;
   background: var(--panel-light);
   border: 2px solid var(--ink);
-  border-radius: 14px;
+  border-radius: 8px;
   z-index: -1;
 }
 /* Sits bottom-left (not bottom-right) because in the hand row, cards later

@@ -275,6 +275,10 @@ const STRINGS = {
     rulesBtn: '📖 Правила гри',
     rulesTooltip: 'Правила',
     menuTooltip: 'Меню',
+    logHistoryTitle: '📜 Історія ходів',
+    logHistoryEmpty: 'Поки що подій немає.',
+    avatarPickerTitle: '🙂 Обрати аватарку',
+    avatarPickerConfirm: 'Зберегти',
     langToggle: 'EN',
     modeHotseat: '👥 Локально (з друзями)',
     modeBots: '🤖 Проти ботів',
@@ -298,6 +302,7 @@ const STRINGS = {
     waitingForHost: 'Очікуємо, поки хост розпочне гру...',
     leaveRoom: '🚪 Вийти з кімнати',
     otherTurn: (name) => `⏳ Хід гравця ${name}`,
+    otherTurnBot: (name) => `🤖 Хід бота ${name}`,
     notYourTurn: 'Зараз не твій хід',
     waitingForTradeResponse: (target, from) => `⏳ ${target} обмірковує пропозицію обміну від ${from}...`,
     waitingTitle: 'Очікування',
@@ -307,7 +312,6 @@ const STRINGS = {
     diffMedium: '🙂 Середній',
     diffHard: '😈 Важкий',
     startVsBots: 'Почати гру 🤖',
-    botPlaying: 'грає...',
     botConsideringTrade: (name) => `🤖 ${name} обмірковує твою пропозицію обміну...`,
     fxBurger: 'Чізбургер готовий!',
     fxSwat: 'Муху знищено!',
@@ -428,6 +432,10 @@ const STRINGS = {
     rulesBtn: '📖 Rules',
     rulesTooltip: 'Rules',
     menuTooltip: 'Menu',
+    logHistoryTitle: '📜 Move history',
+    logHistoryEmpty: 'No events yet.',
+    avatarPickerTitle: '🙂 Choose an avatar',
+    avatarPickerConfirm: 'Save',
     langToggle: 'UA',
     modeHotseat: '👥 Local (pass & play)',
     modeBots: '🤖 Vs bots',
@@ -451,6 +459,7 @@ const STRINGS = {
     waitingForHost: 'Waiting for the host to start the game...',
     leaveRoom: '🚪 Leave room',
     otherTurn: (name) => `⏳ ${name}'s turn`,
+    otherTurnBot: (name) => `🤖 ${name}'s turn`,
     notYourTurn: "It's not your turn",
     waitingForTradeResponse: (target, from) => `⏳ ${target} is considering a trade offer from ${from}...`,
     waitingTitle: 'Waiting',
@@ -460,7 +469,6 @@ const STRINGS = {
     diffMedium: '🙂 Medium',
     diffHard: '😈 Hard',
     startVsBots: 'Start Game 🤖',
-    botPlaying: 'is playing...',
     botConsideringTrade: (name) => `🤖 ${name} is considering your trade offer...`,
     fxBurger: 'Cheeseburger ready!',
     fxSwat: 'Fly swatted!',
@@ -838,12 +846,12 @@ function pushStateToFirebase() {
   ONLINE.roomRef.child('state').set(serializeState(G));
 }
 
-function onlineCreateRoom(name) {
+function onlineCreateRoom(name, avatar) {
   if (!firebaseReady()) { setupState.onlineError = t('onlineNotConfigured'); renderSetup(); return; }
   const db = ensureFirebase();
   const code = genRoomCode();
   const roomRef = db.ref('rooms/' + code);
-  roomRef.set({ players: [{ id: 0, name }], started: false, state: null, createdAt: Date.now() })
+  roomRef.set({ players: [{ id: 0, name, avatar: avatar || '' }], started: false, state: null, createdAt: Date.now() })
     .then(() => {
       ONLINE = { code, myId: 0, isHost: true, roomRef, roomData: null, syncing: false };
       subscribeOnlineRoom();
@@ -851,7 +859,7 @@ function onlineCreateRoom(name) {
     .catch(() => { setupState.onlineError = t('onlineConnectError'); renderSetup(); });
 }
 
-function onlineJoinRoom(codeRaw, name) {
+function onlineJoinRoom(codeRaw, name, avatar) {
   if (!firebaseReady()) { setupState.onlineError = t('onlineNotConfigured'); renderSetup(); return; }
   const code = codeRaw.trim().toUpperCase();
   if (!code) return;
@@ -866,7 +874,7 @@ function onlineJoinRoom(codeRaw, name) {
       players = players || [];
       if (players.length >= MAX_PLAYERS) { tooFull = true; return; }
       assignedId = players.length;
-      players.push({ id: players.length, name });
+      players.push({ id: players.length, name, avatar: avatar || '' });
       return players;
     }, (error, committed) => {
       if (tooFull) { setupState.onlineError = t('onlineRoomFull'); renderSetup(); return; }
@@ -898,8 +906,9 @@ function onlineStartGame() {
   const players = ONLINE.roomData.players;
   if (players.length < MIN_PLAYERS) return;
   const names = players.map(p => p.name);
+  const avatars = players.map(p => p.avatar || '');
   ONLINE.syncing = true;
-  newGame(names, { online: true });
+  newGame(names, { online: true, avatars });
   ONLINE.roomRef.child('started').set(true);
 }
 
@@ -916,7 +925,7 @@ let rulesOpen = false;
    which modal is open, hand view mode, main menu. In online mode the whole
    of G gets pushed to Firebase and broadcast to every connected client, so
    anything that lives on G is effectively shared; this stays purely local. */
-let LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null, logToasts: [], lastLogSeq: undefined, logToastTimer: null };
+let LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null, logToasts: [], lastLogSeq: undefined, logToastTimer: null, animatedIds: new Set(), logHistoryOpen: false, avatarModal: null };
 
 function currentPlayer() { return G.players[G.currentPlayerIndex]; }
 function otherPlayers() { return G.players.filter(p => p.id !== currentPlayer().id); }
@@ -925,9 +934,21 @@ function otherPlayers() { return G.players.filter(p => p.id !== currentPlayer().
    gated by "is this actually my seat" rather than by turn order. In
    hotseat/vs-bots the screen itself is already private per player, so
    treat every seat as "mine" there. */
+/* The one constant "whose screen is this" identity across all three modes:
+   online — the device's own player, fixed all game; hotseat — whoever's
+   turn it is, since the device gets physically handed to that player;
+   vs bots — the one human, which is NOT currentPlayer() during a bot's
+   turn (that's the mistake that used to rotate the whole seating and leak
+   bot burger counts as if they were "mine"). */
+function getViewerId() {
+  if (!G) return null;
+  if (G.online) return ONLINE && ONLINE.myId;
+  if (G.vsBots) { const human = G.players.find(p => !p.isBot); return human ? human.id : currentPlayer().id; }
+  return currentPlayer().id;
+}
 function isMe(playerId) {
-  if (G && G.online) return !!(ONLINE && ONLINE.myId === playerId);
-  return true;
+  if (!G) return true;
+  return playerId === getViewerId();
 }
 function addLog(msg) {
   G.log.unshift(msg);
@@ -941,12 +962,13 @@ function addLog(msg) {
 function newGame(names, options) {
   options = options || {};
   const isBotFlags = options.isBotFlags || names.map(() => false);
+  const avatars = options.avatars || [];
   const difficulty = options.difficulty || 'medium';
   const vsBots = !!options.vsBots;
   const deck = shuffle(buildDeck());
   const burgerPile = shuffle(buildBurgerPile());
-  const players = names.map((name, i) => ({ id: i, name, hand: [], burgers: [], isBot: !!isBotFlags[i], difficulty }));
-  LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null, logToasts: [], lastLogSeq: undefined, logToastTimer: null };
+  const players = names.map((name, i) => ({ id: i, name, avatar: avatars[i] || null, hand: [], burgers: [], isBot: !!isBotFlags[i], difficulty }));
+  LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null, logToasts: [], lastLogSeq: undefined, logToastTimer: null, animatedIds: new Set(), logHistoryOpen: false, avatarModal: null };
   G = {
     players, drawPile: deck, discardPile: [], burgerPile,
     currentPlayerIndex: 0, movesLeft: 3,
@@ -1414,6 +1436,31 @@ function playGust(targetId) {
   render();
 }
 
+/* Picking your own avatar is a real, shared, synced change (other players
+   see it too) — but it must work regardless of whose turn it is, so it
+   can't live in LOCAL_UI.modal (that channel only renders during your own
+   turn — see renderGame/renderOnlineGame). Gets its own ungated slot, same
+   pattern as settings/log-history. */
+function openAvatarPicker(playerId) {
+  if (!isMe(playerId)) return;
+  LOCAL_UI.avatarModal = { playerId, draft: null };
+  renderLocal();
+}
+function closeAvatarPicker() { LOCAL_UI.avatarModal = null; renderLocal(); }
+function setAvatarDraft(value) {
+  LOCAL_UI.avatarModal.draft = value.trim().slice(0, 4);
+  renderLocal();
+}
+function confirmAvatarPick() {
+  const m = LOCAL_UI.avatarModal;
+  const target = G.players.find(pl => pl.id === m.playerId);
+  const emoji = (m.draft != null ? m.draft : (target.avatar || '')).trim();
+  if (!target || !emoji) return;
+  target.avatar = emoji;
+  LOCAL_UI.avatarModal = null;
+  render();
+}
+
 function openMakeBurgerModal() {
   const p = currentPlayer();
   if (G.movesLeft <= 0) return;
@@ -1674,14 +1721,15 @@ function restartSameGame() {
   if (G.online && !ONLINE.isHost) return; // only the host may reshuffle/redeal
   const names = G.players.map(p => p.name);
   const isBotFlags = G.players.map(p => p.isBot);
+  const avatars = G.players.map(p => p.avatar || '');
   const difficulty = G.players[0] && G.players[0].difficulty;
   if (G.online) ONLINE.syncing = true;
-  newGame(names, { vsBots: G.vsBots, isBotFlags, difficulty, online: G.online });
+  newGame(names, { vsBots: G.vsBots, isBotFlags, avatars, difficulty, online: G.online });
 }
 function exitToSetup() {
   if (ONLINE) onlineLeaveRoom();
   G = null;
-  LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null, logToasts: [], lastLogSeq: undefined, logToastTimer: null };
+  LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null, logToasts: [], lastLogSeq: undefined, logToastTimer: null, animatedIds: new Set(), logHistoryOpen: false, avatarModal: null };
   render();
 }
 function menuButtonHtml() {
@@ -1842,7 +1890,9 @@ let setupState = {
   mode: 'hotseat', // 'hotseat' | 'bots' | 'online'
   count: 4,
   names: ['', '', '', ''],
+  avatars: ['', '', '', ''],
   yourName: '',
+  yourAvatar: '',
   difficulty: 'medium',
   joinCode: '',
   onlineError: null,
@@ -1851,6 +1901,8 @@ let setupState = {
 function renderSetup() {
   while (setupState.names.length < setupState.count) setupState.names.push('');
   while (setupState.names.length > setupState.count) setupState.names.pop();
+  while (setupState.avatars.length < setupState.count) setupState.avatars.push('');
+  while (setupState.avatars.length > setupState.count) setupState.avatars.pop();
 
   app.innerHTML = `
     <div class="screen">
@@ -1885,7 +1937,9 @@ function renderSetup() {
 function renderSetupOnline() {
   return `
     <h3>${t('yourName')}</h3>
-    <div class="name-list">
+    <div class="name-avatar-row">
+      <input class="avatar-input avatar-input-sm" type="text" maxlength="4" placeholder="🙂" value="${escapeHtml(setupState.yourAvatar)}"
+        oninput="setupSetYourAvatar(this.value)" />
       <input type="text" placeholder="${t('yourNamePlaceholder')}" value="${escapeHtml(setupState.yourName)}"
         oninput="setupSetYourName(this.value)" />
     </div>
@@ -1917,8 +1971,12 @@ function renderSetupHotseat() {
     <h3>${t('playerNames')}</h3>
     <div class="name-list">
       ${setupState.names.map((n, i) => `
-        <input type="text" placeholder="${t('playerPlaceholder', i + 1)}" value="${escapeHtml(n)}"
-          oninput="setupSetName(${i}, this.value)" />
+        <div class="name-avatar-row">
+          <input class="avatar-input avatar-input-sm" type="text" maxlength="4" placeholder="${escapeHtml(SEAT_AVATARS[i % SEAT_AVATARS.length])}" value="${escapeHtml(setupState.avatars[i] || '')}"
+            oninput="setupSetAvatar(${i}, this.value)" />
+          <input type="text" placeholder="${t('playerPlaceholder', i + 1)}" value="${escapeHtml(n)}"
+            oninput="setupSetName(${i}, this.value)" />
+        </div>
       `).join('')}
     </div>
 
@@ -1929,7 +1987,9 @@ function renderSetupHotseat() {
 function renderSetupBots() {
   return `
     <h3>${t('yourName')}</h3>
-    <div class="name-list">
+    <div class="name-avatar-row">
+      <input class="avatar-input avatar-input-sm" type="text" maxlength="4" placeholder="🙂" value="${escapeHtml(setupState.yourAvatar)}"
+        oninput="setupSetYourAvatar(this.value)" />
       <input type="text" placeholder="${t('yourNamePlaceholder')}" value="${escapeHtml(setupState.yourName)}"
         oninput="setupSetYourName(this.value)" />
     </div>
@@ -1959,11 +2019,13 @@ function setupChangeCount(delta) {
   renderSetup();
 }
 function setupSetName(i, val) { setupState.names[i] = val; }
+function setupSetAvatar(i, val) { setupState.avatars[i] = val.trim().slice(0, 4); }
 function setupSetYourName(val) { setupState.yourName = val; }
+function setupSetYourAvatar(val) { setupState.yourAvatar = val.trim().slice(0, 4); }
 function setupSetDifficulty(d) { setupState.difficulty = d; renderSetup(); }
 function setupStart() {
   const names = setupState.names.map((n, i) => n.trim() || t('playerPlaceholder', i + 1));
-  newGame(names);
+  newGame(names, { avatars: setupState.avatars });
 }
 function setupStartVsBots() {
   const human = setupState.yourName.trim() || t('yourNamePlaceholder');
@@ -1971,18 +2033,19 @@ function setupStartVsBots() {
   const botNames = pickRandomBotNames(botCount);
   const names = [human, ...botNames];
   const isBotFlags = [false, ...botNames.map(() => true)];
-  newGame(names, { vsBots: true, isBotFlags, difficulty: setupState.difficulty });
+  const avatars = [setupState.yourAvatar, ...botNames.map(() => '')];
+  newGame(names, { vsBots: true, isBotFlags, avatars, difficulty: setupState.difficulty });
 }
 
 function setupSetJoinCode(v) { setupState.joinCode = v.toUpperCase(); }
 function setupCreateOnlineRoom() {
   setupState.onlineError = null;
-  onlineCreateRoom(setupState.yourName.trim() || t('yourNamePlaceholder'));
+  onlineCreateRoom(setupState.yourName.trim() || t('yourNamePlaceholder'), setupState.yourAvatar);
   renderSetup();
 }
 function setupJoinOnlineRoom() {
   setupState.onlineError = null;
-  onlineJoinRoom(setupState.joinCode, setupState.yourName.trim() || t('yourNamePlaceholder'));
+  onlineJoinRoom(setupState.joinCode, setupState.yourName.trim() || t('yourNamePlaceholder'), setupState.yourAvatar);
   renderSetup();
 }
 
@@ -2106,11 +2169,23 @@ function renderOnlineWaiting(message) {
 }
 
 /* ---- Card rendering helper ---- */
+/* The pop-in slide/scale should only ever play once per card — every
+   render rebuilds the DOM from scratch, so without this a card sitting in
+   G.newCardIds (true for ~2.2s after being drawn) would replay its entrance
+   animation on every single re-render in that window, including ones
+   triggered by something unrelated like opening a menu. The "NEW" badge
+   itself is fine to keep redrawing — it's static, nothing to replay. */
+function shouldPlayPopIn(cardId) {
+  if (LOCAL_UI.animatedIds.has(cardId)) return false;
+  LOCAL_UI.animatedIds.add(cardId);
+  return true;
+}
 function renderCard(card, selectable, onclick, selected, fanStyle, reason, suppressNewBadge) {
   if (!card) return '';
   const meta = card.type === 'ingredient' ? ingMeta(card.kind) : actMeta(card.kind);
   const isNew = !suppressNewBadge && !!(G && G.newCardIds && G.newCardIds.has(card.id));
-  const cls = ['card', 'card-art', card.type, card.kind, selected ? 'selected' : '', selectable ? '' : 'disabled', isNew ? 'card-new' : ''].join(' ');
+  const playPopIn = isNew && shouldPlayPopIn(card.id);
+  const cls = ['card', 'card-art', card.type, card.kind, selected ? 'selected' : '', selectable ? '' : 'disabled', playPopIn ? 'card-new' : ''].join(' ');
   const clickAttr = onclick ? `onclick="${onclick}"` : '';
   const styleAttr = fanStyle ? `style="${fanStyle}"` : '';
   // Hover always shows what the card is/does (handy since the art has no
@@ -2129,48 +2204,52 @@ function renderCard(card, selectable, onclick, selected, fanStyle, reason, suppr
 }
 
 /* ---- Main game screen ---- */
+/* Vs-bots and hotseat share this renderer now (hotseat's active player is
+   always the viewer, so isMyTurn is always true there). During a bot's
+   turn the human's own hand and table stay visible exactly as always —
+   just dimmed/disabled — instead of swapping to a separate sparse
+   "bot is thinking" screen that used to hide the hand and re-center the
+   table on the bot. */
 function renderGame() {
-  const p = currentPlayer();
-
-  if (p.isBot) {
-    renderBotThinking(p, `🤖 <b>${escapeHtml(p.name)}</b> ${t('botPlaying')}`);
-    return;
-  }
+  const active = currentPlayer();
+  const me = G.players[getViewerId()];
+  const isMyTurn = active.id === me.id;
 
   app.innerHTML = `
     ${menuButtonHtml()}
     <div class="screen board">
       <div class="top-row">
-        <h2>${t('yourTurn', escapeHtml(p.name))}</h2>
+        <h2>${isMyTurn ? t('yourTurn', escapeHtml(me.name)) : t('otherTurnBot', escapeHtml(active.name))}</h2>
         <div class="moves-indicator">
           ${[0, 1, 2].map(i => `<div class="dot ${i < (3 - G.movesLeft) ? 'used' : ''}"></div>`).join('')}
           <span>${t('movesLeft', G.movesLeft)}</span>
+          <button class="log-history-btn" onclick="openLogHistory()" title="${t('logHistoryTitle')}">📜</button>
         </div>
       </div>
 
-      ${renderTable(p)}
-
+      ${renderTable(active)}
 
       <div class="actions-row">
-        <button class="btn-gold" ${G.movesLeft <= 0 ? 'disabled' : ''} onclick="openMakeBurgerModal()">${t('makeBurgerBtn')}</button>
-        <button class="btn-secondary" ${G.movesLeft <= 0 ? 'disabled' : ''} onclick="openTradeModal()">${t('tradeBtn')}</button>
-        <button class="btn-danger" onclick="endTurn()">${t('endTurnBtn')}</button>
+        <button class="btn-gold" ${isMyTurn && G.movesLeft > 0 ? '' : 'disabled'} onclick="openMakeBurgerModal()">${t('makeBurgerBtn')}</button>
+        <button class="btn-secondary" ${isMyTurn && G.movesLeft > 0 ? '' : 'disabled'} onclick="openTradeModal()">${t('tradeBtn')}</button>
+        <button class="btn-danger" ${isMyTurn ? '' : 'disabled'} onclick="endTurn()">${t('endTurnBtn')}</button>
       </div>
 
       <div class="hand-label-row">
-        <div class="hand-label">${t('handLabel', p.hand.length)}</div>
+        <div class="hand-label">${t('handLabel', me.hand.length)}</div>
         <button class="btn-sm btn-secondary" onclick="toggleHandGrouped()">${LOCAL_UI.handGrouped ? t('fanBtn') : t('groupBtn')}</button>
       </div>
-      ${LOCAL_UI.handGrouped ? renderGroupedHand(p) : renderFanHand(p)}
+      ${LOCAL_UI.handGrouped ? renderGroupedHand(me, !isMyTurn) : renderFanHand(me, !isMyTurn)}
     </div>
-    ${renderModal()}
-    ${renderPendingReveal()}
+    ${isMyTurn ? renderModal() : ''}
+    ${isMyTurn ? renderPendingReveal() : ''}
     ${renderBurgerReveal()}
+    ${renderLogHistoryModal()}
     ${renderMainMenuModal()}
     ${renderRulesModal()}
   `;
   layoutHandRow();
-  if (!LOCAL_UI.handGrouped) setupHandDrag();
+  if (isMyTurn && !LOCAL_UI.handGrouped) setupHandDrag();
 }
 
 /* Online: everyone sees the same table, but only the active player's
@@ -2190,10 +2269,11 @@ function renderOnlineGame() {
         <div class="moves-indicator">
           ${[0, 1, 2].map(i => `<div class="dot ${i < (3 - G.movesLeft) ? 'used' : ''}"></div>`).join('')}
           <span>${t('movesLeft', G.movesLeft)}</span>
+          <button class="log-history-btn" onclick="openLogHistory()" title="${t('logHistoryTitle')}">📜</button>
         </div>
       </div>
 
-      ${renderTable(active, ONLINE.myId)}
+      ${renderTable(active)}
 
 
       <div class="actions-row">
@@ -2211,6 +2291,7 @@ function renderOnlineGame() {
     ${isMyTurn ? renderModal() : ''}
     ${isMyTurn ? renderPendingReveal() : ''}
     ${renderBurgerReveal()}
+    ${renderLogHistoryModal()}
     ${renderMainMenuModal()}
     ${renderRulesModal()}
   `;
@@ -2268,6 +2349,14 @@ function renderStackCard(group, p, forceDisabled) {
     : cardUsability(front, p);
   const count = group.cards.length;
   const isNew = group.cards.some(c => G.newCardIds && G.newCardIds.has(c.id));
+  // Every newly-added card in the group must go through shouldPlayPopIn
+  // (it has a side effect marking it animated), so map() rather than some()
+  // — a short-circuit would leave a later-checked new card unmarked and
+  // able to trigger a stray repeat animation on some future render.
+  const playPopIn = group.cards
+    .filter(c => G.newCardIds && G.newCardIds.has(c.id))
+    .map(c => shouldPlayPopIn(c.id))
+    .some(Boolean);
   const cardHtml = renderCard(front, usable, usable && handler ? handler : null, false, null, reason, true);
   const depth = Math.min(count - 1, 3);
   const shadows = Array.from({ length: depth }, (_, i) =>
@@ -2275,7 +2364,7 @@ function renderStackCard(group, p, forceDisabled) {
   ).join('');
   const countBadge = count > 1 ? `<div class="stack-count">×${count}</div>` : '';
   const newBadge = isNew ? `<div class="card-new-badge stack-new-badge">${t('newBadge')}</div>` : '';
-  return `<div class="card-stack-wrap ${isNew ? 'card-new' : ''}">
+  return `<div class="card-stack-wrap ${playPopIn ? 'card-new' : ''}">
       ${shadows}
       ${cardHtml}
       ${countBadge}
@@ -2335,10 +2424,11 @@ function layoutHandRow() {
   const cardW = cardRect.width, cardH = cardRect.height;
   const n = items.length;
   const available = Math.max(0, containerW - cardW);
-  const naturalStep = cardW * 0.42;
+  // Cards spread out to use the row's full width when there's room (up to
+  // sitting fully apart, cardW itself), and only overlap once they no
+  // longer fit — the more cards, the tighter that overlap gets.
   const minStep = cardW * 0.12;
-  const forced = n > 1 ? available / (n - 1) : naturalStep;
-  const step = Math.max(minStep, Math.min(naturalStep, forced));
+  const step = n > 1 ? Math.max(minStep, Math.min(cardW, available / (n - 1))) : 0;
   const totalWidth = cardW + step * (n - 1);
   const startX = Math.max(0, (containerW - totalWidth) / 2);
   items.forEach((el, i) => {
@@ -2422,9 +2512,9 @@ const SEAT_AVATARS = ['🧑', '👩', '🧔', '👨', '👩‍🦱', '👨‍�
    bottom of the table regardless of whose turn it actually is. */
 function renderTable(activePlayer, viewerId) {
   const N = G.players.length;
-  const vId = viewerId != null ? viewerId : activePlayer.id;
+  const vId = viewerId != null ? viewerId : getViewerId();
   const viewerIdx = Math.max(0, G.players.findIndex(p => p.id === vId));
-  const RX = 38, RY = 38; // radii in % of table-wrap box — leaves room for seat width so it doesn't clip on narrow screens
+  const RX = 40, RY = 40; // matches .table-felt's inset:10% ring exactly, so avatars sit right on the dashed line
   const seats = G.players.map((pl, i) => {
     const rel = (i - viewerIdx + N) % N;
     const angle = (90 + rel * (360 / N)) * (Math.PI / 180); // 90° = bottom, where the viewer always sits
@@ -2456,6 +2546,22 @@ function renderTable(activePlayer, viewerId) {
    G.log, so it reacts correctly whether THIS device caused the new entry or
    just received it via the Firebase sync — either way the toast appears
    here the moment the change shows up in a render. */
+/* Each toast fades on its own timer (not a shared "clear everything at
+   once" timeout) — since they're added in order and each lives the same
+   ~4s, the oldest (bottom of the stack) always finishes first, giving the
+   one-at-a-time bottom-to-top disappearance rather than a group wipe. */
+function scheduleToastRemoval(key) {
+  setTimeout(() => {
+    const entry = LOCAL_UI.logToasts.find(t => t.key === key);
+    if (!entry) return;
+    entry.leaving = true;
+    renderLocal();
+    setTimeout(() => {
+      LOCAL_UI.logToasts = LOCAL_UI.logToasts.filter(t => t.key !== key);
+      renderLocal();
+    }, 400); // matches the log-toast-out CSS animation duration
+  }, 4000);
+}
 function pushLogToasts() {
   if (!LOCAL_UI.logToasts) LOCAL_UI.logToasts = [];
   const seq = G.logSeq || 0;
@@ -2465,21 +2571,32 @@ function pushLogToasts() {
   const count = Math.min(delta, G.log.length, 5); // safety cap if a lot changed at once
   LOCAL_UI.lastLogSeq = seq;
   G.log.slice(0, count).reverse().forEach(text => {
-    LOCAL_UI.logToasts.push({ text, key: Date.now() + '-' + Math.random() });
+    const key = Date.now() + '-' + Math.random();
+    LOCAL_UI.logToasts.push({ text, key });
+    scheduleToastRemoval(key);
   });
   if (LOCAL_UI.logToasts.length > 6) LOCAL_UI.logToasts = LOCAL_UI.logToasts.slice(-6);
-  clearTimeout(LOCAL_UI.logToastTimer);
-  LOCAL_UI.logToastTimer = setTimeout(() => {
-    LOCAL_UI.logToasts = [];
-    renderLocal();
-  }, 5000);
 }
 function renderLogToasts() {
   if (!LOCAL_UI.logToasts || !LOCAL_UI.logToasts.length) return '';
   const lines = LOCAL_UI.logToasts.slice().reverse().map((entry, i) =>
-    `<div class="log-toast-line" style="opacity:${Math.max(0.3, 1 - i * 0.16)}" data-key="${entry.key}">${escapeHtml(entry.text)}</div>`
+    `<div class="log-toast-line ${entry.leaving ? 'leaving' : ''}" style="opacity:${entry.leaving ? '' : Math.max(0.3, 1 - i * 0.16)}" data-key="${entry.key}">${escapeHtml(entry.text)}</div>`
   ).join('');
   return `<div class="log-toast-stack">${lines}</div>`;
+}
+/* Full history — the toasts fade away, but every line is still in G.log,
+   scrollable here so a "what did I miss" moment doesn't need to be caught
+   live. */
+function openLogHistory() { LOCAL_UI.logHistoryOpen = true; renderLocal(); }
+function closeLogHistory() { LOCAL_UI.logHistoryOpen = false; renderLocal(); }
+function renderLogHistoryModal() {
+  if (!LOCAL_UI.logHistoryOpen) return '';
+  return wrapModal(t('logHistoryTitle'), `
+    <div class="log-history-list">
+      ${G.log.length ? G.log.map(l => `<div class="log-history-line">${escapeHtml(l)}</div>`).join('') : `<div class="log-history-empty">${t('logHistoryEmpty')}</div>`}
+    </div>
+    <div class="footer-actions"><button class="btn-secondary" onclick="closeLogHistory()">${t('close')}</button></div>
+  `, false);
 }
 
 /* Mini card-stack visual for the three central piles. 'discard' gets a
@@ -2523,24 +2640,28 @@ function renderSeat(pl, isActive, x, y, i) {
   const mine = isMe(pl.id);
   const validSum = pl.burgers.filter(b => !b.fly).reduce((s, b) => s + b.value, 0);
   const burgerStat = mine ? `<span>🍔 ${t('burgerProgress', validSum, WIN_THRESHOLD)}</span>` : '';
+  const avatarEmoji = pl.avatar || (pl.isBot ? '🤖' : SEAT_AVATARS[i % SEAT_AVATARS.length]);
+  const avatarClick = mine ? `onclick="openAvatarPicker(${pl.id})"` : '';
   return `
     <div class="seat ${isActive ? 'active' : ''}" style="left:${x}%; top:${y}%;">
       ${renderSeatEffectToast(pl)}
-      <div class="seat-avatar-ring">
-        <div class="seat-avatar">${pl.isBot ? '🤖' : SEAT_AVATARS[i % SEAT_AVATARS.length]}</div>
+      <div class="seat-avatar-ring ${mine ? 'pickable' : ''}" ${avatarClick} title="${mine ? escapeHtml(t('avatarPickerTitle')) : ''}">
+        <div class="seat-avatar">${avatarEmoji}</div>
         ${isActive ? '<div class="seat-turn-badge">🔔</div>' : ''}
       </div>
-      <div class="seat-name">${escapeHtml(pl.name)}</div>
-      <div class="seat-stats">
-        <span>🃏 ${pl.hand.length}</span>
-        ${burgerStat}
-      </div>
-      <div class="burger-slots">
-        ${pl.burgers.map(b => `<div class="burger-slot ${b.fly ? 'fly' : ''}">
-            <img class="burger-slot-img" src="${BACK_ART.burger}" alt="" draggable="false" />
-            ${mine ? `<div class="card-tooltip">${b.fly ? t('burgerTooltipFly', b.value) : t('burgerTooltip', b.value)}</div>` : ''}
-            ${b.fly ? '<span class="burger-slot-fly">🪰</span>' : ''}
-          </div>`).join('')}
+      <div class="seat-info">
+        <div class="seat-name">${escapeHtml(pl.name)}</div>
+        <div class="seat-stats">
+          <span>🃏 ${pl.hand.length}</span>
+          ${burgerStat}
+        </div>
+        <div class="burger-slots">
+          ${pl.burgers.map(b => `<div class="burger-slot ${b.fly ? 'fly' : ''}">
+              <img class="burger-slot-img" src="${BACK_ART.burger}" alt="" draggable="false" />
+              ${mine ? `<div class="card-tooltip">${b.fly ? t('burgerTooltipFly', b.value) : t('burgerTooltip', b.value)}</div>` : ''}
+              ${b.fly ? '<span class="burger-slot-fly">🪰</span>' : ''}
+            </div>`).join('')}
+        </div>
       </div>
     </div>
   `;
@@ -2558,6 +2679,24 @@ function renderPendingReveal() {
       </div>
     </div>
   `;
+}
+
+/* Ungated (not part of LOCAL_UI.modal) so it can open on any player's turn,
+   not just your own — see openAvatarPicker(). */
+function renderAvatarPickerModal() {
+  const m = LOCAL_UI.avatarModal;
+  if (!m) return '';
+  const target = G.players.find(pl => pl.id === m.playerId);
+  const current = m.draft != null ? m.draft : (target ? target.avatar || '' : '');
+  return wrapModal(t('avatarPickerTitle'), `
+    <input class="avatar-input" type="text" maxlength="4" value="${escapeHtml(current)}"
+      placeholder="🙂" oninput="setAvatarDraft(this.value)" />
+    <div class="avatar-presets">
+      ${SEAT_AVATARS.map(e => `<button class="avatar-preset ${current === e ? 'active' : ''}" onclick="setAvatarDraft('${e}')">${e}</button>`).join('')}
+    </div>
+    <button class="btn-gold btn-block" ${current ? '' : 'disabled'} onclick="confirmAvatarPick()">${t('avatarPickerConfirm')}</button>
+    <div class="footer-actions"><button class="btn-secondary" onclick="closeAvatarPicker()">${t('cancel')}</button></div>
+  `, false);
 }
 
 function renderModal() {
