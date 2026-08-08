@@ -229,7 +229,12 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 }
 
 .name-list { display: flex; flex-direction: column; gap: 8px; }
-.name-list input {
+/* Also covers the standalone "your name" row in bots/online setup
+   (name-avatar-row outside .name-list) — that input had no styling of its
+   own at all, so it fell back to the browser default box model and never
+   matched the 44px avatar-picker button next to it. */
+.name-list input,
+.name-avatar-row input[type="text"] {
   height: 44px;
   box-sizing: border-box;
   padding: 0 12px;

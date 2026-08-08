@@ -2529,7 +2529,11 @@ function reorderHand(fromIdx, toIdx) {
 }
 
 /* ---- Round table with seats around the rim (dashed circle guide, no table prop) ---- */
-const SEAT_AVATARS = ['🧑', '👩', '🧔', '👨', '👩‍🦱', '👨‍🦰', '🧑‍🦳', '👱'];
+const SEAT_AVATARS = [
+  '🧑', '👩', '🧔', '👨', '👩‍🦱', '👨‍🦰', '🧑‍🦳', '👱',
+  '🐶', '🐱', '🐵', '🦊', '🐼', '🐻', '🐯', '🦁', '🐰', '🐨', '🐷', '🐮', '🐸', '🦄',
+  '🤡', '👽', '🤖', '🎃', '🥸', '😎', '🦖',
+];
 
 /* viewerId defaults to the active player (correct for hotseat/vs-bots,
    where only the current player ever sees this screen); online mode passes
