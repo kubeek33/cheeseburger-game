@@ -1235,6 +1235,15 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
    table down to a sliver (or, without the min-height fix on
    .table-region-flex above, to nothing at all). Placed last so it wins
    over both the mobile and min-width:900px rules above by source order. */
+/* Always exactly 3 action buttons (make burger / trade / end turn) — on a
+   narrow phone the default button padding/font made them too wide to fit
+   3-across, so the grid's auto-fit wrapped the 3rd one onto its own row,
+   costing an extra ~50px of height the table could've used instead.
+   Forcing 3 fixed columns with smaller type keeps them in one row. */
+@media (max-width: 480px) {
+  .actions-row { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .actions-row button { padding: 8px 4px; font-size: 12px; }
+}
 @media (max-height: 700px) {
   .screen.board { gap: 6px; padding: 10px 14px 8px; }
   .hand-row-outer { padding-top: 22px; }
