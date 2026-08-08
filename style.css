@@ -817,8 +817,13 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   top: 0;
   left: 0;
   touch-action: none;
-  transition: transform .18s ease;
 }
+/* No transition on the item's own position transform: every action rebuilds
+   the whole board from scratch (innerHTML), so these elements are always
+   freshly created — a transition here animated from transform:none to the
+   spread-out position on EVERY single render, making the hand visibly
+   "fan out" again after each click. .card's own hover-lift transition
+   (below) is untouched by this. */
 .hcard-item:hover { z-index: 999 !important; }
 .hcard-item:hover .card,
 .hcard-item:hover .card-stack-wrap {

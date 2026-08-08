@@ -1124,7 +1124,7 @@ function doMakeClassic() {
   G.movesLeft--;
   addLog(t('madeClassic', p.name));
   triggerEffect('🍔✨', t('fxBurger'), p.id);
-  if (burgerCard) showBurgerReveal(burgerCard.value);
+  if (burgerCard && isMe(p.id)) showBurgerReveal(burgerCard.value);
   afterBurgerMade();
 }
 
@@ -1144,7 +1144,7 @@ function doMakeGrandma(overrideKinds) {
   G.movesLeft--;
   addLog(t('madeGrandma', p.name));
   triggerEffect('🍔✨', t('fxBurger'), p.id);
-  if (burgerCard) showBurgerReveal(burgerCard.value);
+  if (burgerCard && isMe(p.id)) showBurgerReveal(burgerCard.value);
   LOCAL_UI.modal = null;
   afterBurgerMade();
 }
