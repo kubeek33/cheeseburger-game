@@ -1310,9 +1310,21 @@ function openInspectorModal() {
   LOCAL_UI.modal = { type: 'inspectorTarget' };
   renderLocal();
 }
+/* Consumes the Inspector card and spends the move right here, before the
+   target's hand is even shown — viewing the hand is the payoff of playing
+   the card, so canceling afterward must not refund it (previously the card
+   wasn't spent until confirmInspector, letting players peek for free). */
 function pickInspectorTarget(targetId) {
+  const p = currentPlayer();
+  const card = removeFromHand(p, c => c.type === 'action' && c.kind === 'inspector');
+  if (!card) return;
+  G.discardPile.push(card);
+  G.movesLeft--;
+  const target = G.players.find(pl => pl.id === targetId);
+  addLog(t('playedInspector', p.name, target.name));
+  triggerEffect('🕵️', t('fxInspect'), target.id);
   LOCAL_UI.modal = { type: 'inspectorView', targetId, picked: [] };
-  renderLocal();
+  render();
 }
 function toggleInspectorPick(cardId) {
   const m = LOCAL_UI.modal;
@@ -1325,17 +1337,12 @@ function confirmInspector() {
   const p = currentPlayer();
   const m = LOCAL_UI.modal;
   if (m.picked.length !== 2) return;
-  const card = removeFromHand(p, c => c.type === 'action' && c.kind === 'inspector');
-  G.discardPile.push(card);
   const target = G.players.find(pl => pl.id === m.targetId);
   const taken = [];
   m.picked.forEach(cid => {
     const c = removeFromHand(target, cc => cc.id === cid);
     if (c) { p.hand.push(c); taken.push(c); }
   });
-  G.movesLeft--;
-  addLog(t('playedInspector', p.name, target.name));
-  triggerEffect('🕵️', t('fxInspect'), target.id);
   markNewCards(taken.map(c => c.id));
   scheduleNewCardExpiry();
   LOCAL_UI.modal = null;
@@ -1931,6 +1938,7 @@ function renderSetup() {
       <div class="info-banner">${setupState.mode === 'hotseat' ? t('passInfoBanner') : ''}</div>
     </div>
     ${renderRulesModal()}
+    ${renderSetupAvatarPickerModal()}
   `;
 }
 
@@ -1938,8 +1946,7 @@ function renderSetupOnline() {
   return `
     <h3>${t('yourName')}</h3>
     <div class="name-avatar-row">
-      <input class="avatar-input avatar-input-sm" type="text" maxlength="4" placeholder="🙂" value="${escapeHtml(setupState.yourAvatar)}"
-        oninput="setupSetYourAvatar(this.value)" />
+      <button type="button" class="avatar-input avatar-input-sm" onclick="openSetupAvatarPicker('you')">${escapeHtml(setupState.yourAvatar) || '🙂'}</button>
       <input type="text" placeholder="${t('yourNamePlaceholder')}" value="${escapeHtml(setupState.yourName)}"
         oninput="setupSetYourName(this.value)" />
     </div>
@@ -1972,8 +1979,7 @@ function renderSetupHotseat() {
     <div class="name-list">
       ${setupState.names.map((n, i) => `
         <div class="name-avatar-row">
-          <input class="avatar-input avatar-input-sm" type="text" maxlength="4" placeholder="${escapeHtml(SEAT_AVATARS[i % SEAT_AVATARS.length])}" value="${escapeHtml(setupState.avatars[i] || '')}"
-            oninput="setupSetAvatar(${i}, this.value)" />
+          <button type="button" class="avatar-input avatar-input-sm" onclick="openSetupAvatarPicker(${i})">${escapeHtml(setupState.avatars[i] || SEAT_AVATARS[i % SEAT_AVATARS.length])}</button>
           <input type="text" placeholder="${t('playerPlaceholder', i + 1)}" value="${escapeHtml(n)}"
             oninput="setupSetName(${i}, this.value)" />
         </div>
@@ -1988,8 +1994,7 @@ function renderSetupBots() {
   return `
     <h3>${t('yourName')}</h3>
     <div class="name-avatar-row">
-      <input class="avatar-input avatar-input-sm" type="text" maxlength="4" placeholder="🙂" value="${escapeHtml(setupState.yourAvatar)}"
-        oninput="setupSetYourAvatar(this.value)" />
+      <button type="button" class="avatar-input avatar-input-sm" onclick="openSetupAvatarPicker('you')">${escapeHtml(setupState.yourAvatar) || '🙂'}</button>
       <input type="text" placeholder="${t('yourNamePlaceholder')}" value="${escapeHtml(setupState.yourName)}"
         oninput="setupSetYourName(this.value)" />
     </div>
@@ -2019,10 +2024,30 @@ function setupChangeCount(delta) {
   renderSetup();
 }
 function setupSetName(i, val) { setupState.names[i] = val; }
-function setupSetAvatar(i, val) { setupState.avatars[i] = val.trim().slice(0, 4); }
 function setupSetYourName(val) { setupState.yourName = val; }
-function setupSetYourAvatar(val) { setupState.yourAvatar = val.trim().slice(0, 4); }
 function setupSetDifficulty(d) { setupState.difficulty = d; renderSetup(); }
+
+/* Setup-screen avatar pick: click-to-choose only (no typing) — a single
+   emoji symbol, picked from presets, same spirit as openAvatarPicker() but
+   writing into setupState (before any G.players exist) instead of G. */
+function openSetupAvatarPicker(target) {
+  LOCAL_UI.setupAvatarPick = { target, draft: null };
+  renderSetup();
+}
+function closeSetupAvatarPicker() { LOCAL_UI.setupAvatarPick = null; renderSetup(); }
+function setSetupAvatarDraft(value) {
+  LOCAL_UI.setupAvatarPick.draft = value;
+  renderSetup();
+}
+function confirmSetupAvatarPick() {
+  const m = LOCAL_UI.setupAvatarPick;
+  const emoji = m.draft || '';
+  if (!emoji) return;
+  if (m.target === 'you') setupState.yourAvatar = emoji;
+  else setupState.avatars[m.target] = emoji;
+  LOCAL_UI.setupAvatarPick = null;
+  renderSetup();
+}
 function setupStart() {
   const names = setupState.names.map((n, i) => n.trim() || t('playerPlaceholder', i + 1));
   newGame(names, { avatars: setupState.avatars });
@@ -2520,7 +2545,7 @@ function renderTable(activePlayer, viewerId) {
     const angle = (90 + rel * (360 / N)) * (Math.PI / 180); // 90° = bottom, where the viewer always sits
     const x = 50 + RX * Math.cos(angle);
     const y = 50 + RY * Math.sin(angle);
-    return renderSeat(pl, pl.id === activePlayer.id, x, y, i);
+    return renderSeat(pl, pl.id === activePlayer.id, x, y, i, pl.id === vId);
   }).join('');
 
   pushLogToasts();
@@ -2550,15 +2575,27 @@ function renderTable(activePlayer, viewerId) {
    once" timeout) — since they're added in order and each lives the same
    ~4s, the oldest (bottom of the stack) always finishes first, giving the
    one-at-a-time bottom-to-top disappearance rather than a group wipe. */
+/* Updates only the toast stack's own DOM node, never the full board —
+   these fire off a timer with no user action involved, so a full
+   renderLocal() here would rebuild (and visibly jump) the whole hand/table
+   every few seconds even when the player isn't doing anything. */
+function patchLogToastDOM() {
+  const wrap = document.querySelector('.table-wrap');
+  if (!wrap) return;
+  const existing = wrap.querySelector('.log-toast-stack');
+  const html = renderLogToasts();
+  if (existing) existing.outerHTML = html || '';
+  else if (html) wrap.insertAdjacentHTML('beforeend', html);
+}
 function scheduleToastRemoval(key) {
   setTimeout(() => {
     const entry = LOCAL_UI.logToasts.find(t => t.key === key);
     if (!entry) return;
     entry.leaving = true;
-    renderLocal();
+    patchLogToastDOM();
     setTimeout(() => {
       LOCAL_UI.logToasts = LOCAL_UI.logToasts.filter(t => t.key !== key);
-      renderLocal();
+      patchLogToastDOM();
     }, 400); // matches the log-toast-out CSS animation duration
   }, 4000);
 }
@@ -2636,7 +2673,7 @@ function renderMiniPile(kind, count, label, topCard) {
   `;
 }
 
-function renderSeat(pl, isActive, x, y, i) {
+function renderSeat(pl, isActive, x, y, i, isViewerSeat) {
   const mine = isMe(pl.id);
   const validSum = pl.burgers.filter(b => !b.fly).reduce((s, b) => s + b.value, 0);
   const burgerStat = mine ? `<span>🍔 ${t('burgerProgress', validSum, WIN_THRESHOLD)}</span>` : '';
@@ -2649,7 +2686,7 @@ function renderSeat(pl, isActive, x, y, i) {
         <div class="seat-avatar">${avatarEmoji}</div>
         ${isActive ? '<div class="seat-turn-badge">🔔</div>' : ''}
       </div>
-      <div class="seat-info">
+      <div class="seat-info ${isViewerSeat ? 'seat-info-flip' : ''}">
         <div class="seat-name">${escapeHtml(pl.name)}</div>
         <div class="seat-stats">
           <span>🃏 ${pl.hand.length}</span>
@@ -2696,6 +2733,20 @@ function renderAvatarPickerModal() {
     </div>
     <button class="btn-gold btn-block" ${current ? '' : 'disabled'} onclick="confirmAvatarPick()">${t('avatarPickerConfirm')}</button>
     <div class="footer-actions"><button class="btn-secondary" onclick="closeAvatarPicker()">${t('cancel')}</button></div>
+  `, false);
+}
+
+function renderSetupAvatarPickerModal() {
+  const m = LOCAL_UI.setupAvatarPick;
+  if (!m) return '';
+  const existing = m.target === 'you' ? setupState.yourAvatar : setupState.avatars[m.target];
+  const current = m.draft != null ? m.draft : (existing || '');
+  return wrapModal(t('avatarPickerTitle'), `
+    <div class="avatar-presets">
+      ${SEAT_AVATARS.map(e => `<button class="avatar-preset ${current === e ? 'active' : ''}" onclick="setSetupAvatarDraft('${e}')">${e}</button>`).join('')}
+    </div>
+    <button class="btn-gold btn-block" ${current ? '' : 'disabled'} onclick="confirmSetupAvatarPick()">${t('avatarPickerConfirm')}</button>
+    <div class="footer-actions"><button class="btn-secondary" onclick="closeSetupAvatarPicker()">${t('cancel')}</button></div>
   `, false);
 }
 
