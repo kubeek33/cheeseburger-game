@@ -304,11 +304,19 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 }
 .table-region-flex {
   flex: 1 1 auto;
-  min-height: 0;
+  /* Not 0 — with flex-shrink:1 and a 0 floor, a tall enough hand/actions
+     block (e.g. a short laptop window, or a phone with the address bar
+     eating the viewport) could squeeze this all the way down to nothing,
+     making the table disappear entirely instead of just getting smaller. */
+  min-height: 140px;
   display: flex;
   align-items: stretch;
   justify-content: center;
-  padding-bottom: 56px; /* room for the bottom seat's name/stats/burger-slots so they don't get clipped */
+  /* No padding-bottom reserved here anymore — the viewer's own seat (always
+     the bottom one) now grows its name/stats/burger-slots upward instead
+     of downward (see .seat-info-flip), so there's nothing left below the
+     table that needs protecting from clipping, and reclaiming this space
+     lets the table itself run bigger. */
   overflow: hidden;
 }
 
@@ -1218,4 +1226,23 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   font-size: 13px;
   text-align: center;
   width: 100%;
+}
+
+/* Short-viewport rescue (a small laptop window, or a phone with the
+   address bar/keyboard eating vertical space): the hand row and its
+   surrounding chrome have fixed sizes tuned for a full-height screen, and
+   on a short one they alone can eat most of the viewport, squeezing the
+   table down to a sliver (or, without the min-height fix on
+   .table-region-flex above, to nothing at all). Placed last so it wins
+   over both the mobile and min-width:900px rules above by source order. */
+@media (max-height: 700px) {
+  .screen.board { gap: 6px; padding: 10px 14px 8px; }
+  .hand-row-outer { padding-top: 22px; }
+  .hand-row { min-height: 96px; }
+  .card, .card-stack-wrap { width: 68px; height: 96px; }
+  .actions-row button { padding: 8px 12px; font-size: 12.5px; }
+  .seat-avatar-ring { width: 40px; height: 40px; }
+  .seat-avatar { font-size: 20px; }
+  .seat-info { width: 68px; font-size: 9px; }
+  .burger-slot { width: 24px; height: 33px; }
 }
