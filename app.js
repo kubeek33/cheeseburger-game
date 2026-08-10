@@ -1049,13 +1049,13 @@ function newGame(names, options) {
   const vsBots = !!options.vsBots;
   const deck = shuffle(buildDeck());
   const burgerPile = shuffle(buildBurgerPile());
-  const players = names.map((name, i) => ({ id: i, name, avatar: avatars[i] || null, hand: [], burgers: [], building: [], grandmaActive: false, isBot: !!isBotFlags[i], difficulty }));
+  const players = names.map((name, i) => ({ id: i, name, avatar: avatars[i] || null, hand: [], burgers: [], builds: [], isBot: !!isBotFlags[i], difficulty }));
   LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null, logToasts: [], lastLogSeq: undefined, logToastTimer: null, animatedIds: new Set(), logHistoryOpen: false, avatarModal: null };
   G = {
     players, drawPile: deck, discardPile: [], burgerPile,
     currentPlayerIndex: 0, movesLeft: 3,
     log: [], logSeq: 0, phase: 'pass', passTarget: 0, passPurpose: 'startTurn',
-    tradeState: null, pendingReveal: null, reaction: null, winner: null, endReason: null,
+    tradeState: null, pendingReveal: null, reaction: null, winner: null, endReason: null, buildSeq: 0,
     newCardIds: new Set(), newCardTimer: null,
     vsBots, online: !!options.online,
   };
@@ -1238,10 +1238,11 @@ function applyReaction() {
       break;
     }
     case 'shoplifter': {
-      const stolen = target.building.pop();
-      if (stolen) {
-        actor.hand.push(stolen.isWild ? { id: stolen.id, type: 'action', kind: 'wild' } : { id: stolen.id, type: 'ingredient', kind: stolen.kind });
-        markNewCards([stolen.id]);
+      const found = findTopBuildCard(target);
+      if (found) {
+        removeBuildCard(target, found.card.id);
+        actor.hand.push(found.card.isWild ? { id: found.card.id, type: 'action', kind: 'wild' } : { id: found.card.id, type: 'ingredient', kind: found.card.kind });
+        markNewCards([found.card.id]);
       }
       break;
     }
@@ -1249,13 +1250,18 @@ function applyReaction() {
       const { giveCardId, takeKind } = r.extra;
       const given = removeFromHand(actor, c => c.id === giveCardId);
       if (given) target.hand.push(given);
-      const idx = target.building.findIndex(b => b.kind === takeKind);
-      if (idx >= 0) {
-        const [taken] = target.building.splice(idx, 1);
-        actor.building.push(taken);
-        markNewCards([taken.id]);
-        finishMoveMaybeCompleteBuild(actor);
-        return; // finishMoveMaybeCompleteBuild already calls render()
+      let takenCard = null;
+      target.builds.forEach(pile => {
+        if (takenCard) return;
+        const c = pile.cards.find(cc => cc.kind === takeKind);
+        if (c) takenCard = c;
+      });
+      if (takenCard) {
+        removeBuildCard(target, takenCard.id);
+        const destPile = addToBuild(actor, takenCard.kind, takenCard.id, takenCard.isWild);
+        markNewCards([takenCard.id]);
+        finishMoveMaybeCompletePile(actor, destPile);
+        return; // finishMoveMaybeCompletePile already calls render()
       }
       break;
     }
@@ -1279,18 +1285,45 @@ function resumeBotIfNeeded() {
 
 /* ---------------- Burger building (on the table) ----------------
    Ingredients are no longer assembled from hand in one shot — each one is
-   played onto the player's own build row individually (like Monopoly
-   Deal's face-up property sets), one card = one move. This is slower by
-   design (see WIN_THRESHOLD, lowered to match) but makes progress visible
-   and stealable/tradeable via Shoplifter and Force Deal. */
-function buildKindsHave(p) { return new Set(p.building.map(b => b.kind)); }
-function buildTargetCount(p) { return p.grandmaActive ? 3 : 5; }
-function missingBuildIngredients(p) {
-  const have = buildKindsHave(p);
-  if (p.grandmaActive) return []; // any 3 distinct kinds qualify, no fixed missing list
-  return INGREDIENTS.filter(i => !have.has(i.kind));
-}
+   played onto the player's own table individually (like Monopoly Deal's
+   face-up property sets), one card = one move. A player can have several
+   burgers in progress at once (p.builds is an array of independent
+   piles) — playing a kind you already started elsewhere just opens a new
+   pile instead of blocking you, so there's never a reason to hold an
+   ingredient in hand. Each card's "seq" is a global monotonic counter so
+   Shoplifter can find the single most-recently-placed card across every
+   pile a player has, regardless of which pile it landed in. */
+function pileKindsHave(pile) { return new Set(pile.cards.map(c => c.kind)); }
+function pileTargetCount(pile) { return pile.grandmaActive ? 3 : 5; }
 function hasGrandmaCard(p) { return p.hand.some(c => c.type === 'action' && c.kind === 'grandma'); }
+
+/* Finds (or opens) a pile that doesn't already have this kind — so playing
+   a duplicate of something you're already building starts a second burger
+   instead of being blocked. */
+function addToBuild(p, kind, cardId, isWild) {
+  let pile = p.builds.find(b => !pileKindsHave(b).has(kind));
+  if (!pile) { pile = { cards: [], grandmaActive: false }; p.builds.push(pile); }
+  G.buildSeq = (G.buildSeq || 0) + 1;
+  pile.cards.push({ id: cardId, kind, isWild, seq: G.buildSeq });
+  return pile;
+}
+function findTopBuildCard(p) {
+  let best = null, bestPile = null;
+  p.builds.forEach(pile => pile.cards.forEach(c => {
+    if (!best || c.seq > best.seq) { best = c; bestPile = pile; }
+  }));
+  return best ? { card: best, pile: bestPile } : null;
+}
+function removeBuildCard(p, cardId) {
+  let removed = null;
+  p.builds.forEach(pile => {
+    const idx = pile.cards.findIndex(c => c.id === cardId);
+    if (idx >= 0) removed = pile.cards.splice(idx, 1)[0];
+  });
+  p.builds = p.builds.filter(pile => pile.cards.length > 0);
+  return removed;
+}
+function totalBuildCards(p) { return p.builds.reduce((s, pile) => s + pile.cards.length, 0); }
 
 function giveBurgerCard(p) {
   if (G.burgerPile.length === 0) { addLog(t('burgerPileEmpty')); return null; }
@@ -1321,60 +1354,62 @@ function removeFromHand(p, predicate) {
   return p.hand.splice(idx, 1)[0];
 }
 
-/* Plays one ingredient card from hand onto the current player's own build
-   row. Completing the set (3 distinct kinds with Grandma active, 5
+/* Plays one ingredient card from hand onto the current player's own table.
+   Completing a pile's set (3 distinct kinds with Grandma active on it, 5
    otherwise) happens automatically as part of this same move — no extra
-   move to "collect" the finished burger. */
+   move to "collect" the finished burger. Playing a kind you're already
+   building elsewhere just opens a second pile rather than being blocked —
+   nothing stops working on several burgers in parallel. */
 function playIngredientToBuild(cardId) {
   const p = currentPlayer();
   if (G.movesLeft <= 0) return;
   const card = p.hand.find(c => c.id === cardId);
   if (!card || card.type !== 'ingredient') return;
-  if (buildKindsHave(p).has(card.kind)) return; // already have this kind on the table
   removeFromHand(p, c => c.id === cardId);
-  p.building.push({ id: card.id, kind: card.kind, isWild: false });
+  const pile = addToBuild(p, card.kind, card.id, false);
   G.movesLeft--;
   addLog(t('playedIngredient', p.name, mName(ingMeta(card.kind))));
   triggerEffect(ingMeta(card.kind).ic, null, p.id);
-  finishMoveMaybeCompleteBuild(p);
+  finishMoveMaybeCompletePile(p, pile);
 }
 
-/* Grandma's Recipe no longer pre-selects 3 ingredients from hand — playing
-   the card just switches the CURRENT build's target from 5 down to 3 for
-   the rest of this build cycle. If 3+ distinct kinds are already on the
-   table, the burger completes immediately, same as before. */
+/* Grandma's Recipe applies to a single pile — whichever one you most
+   recently started that isn't already on the shortcut, or a fresh one if
+   every open pile already has it. If that pile already has 3+ distinct
+   kinds, the burger completes immediately, same as before. */
 function playGrandmaShortcut() {
   const p = currentPlayer();
   if (G.movesLeft <= 0) return;
   const card = removeFromHand(p, c => c.type === 'action' && c.kind === 'grandma');
   if (!card) return;
   G.discardPile.push(card);
-  p.grandmaActive = true;
+  let pile = [...p.builds].reverse().find(b => !b.grandmaActive);
+  if (!pile) { pile = { cards: [], grandmaActive: false }; p.builds.push(pile); }
+  pile.grandmaActive = true;
   G.movesLeft--;
   addLog(t('playedGrandma', p.name));
   triggerEffect('👵', null, p.id);
-  finishMoveMaybeCompleteBuild(p);
+  finishMoveMaybeCompletePile(p, pile);
 }
 
 function openWildModal() {
   const p = currentPlayer();
   if (G.movesLeft <= 0 || !p.hand.some(c => c.type === 'action' && c.kind === 'wild')) return;
-  if (buildKindsHave(p).size >= buildTargetCount(p)) return;
   LOCAL_UI.modal = { type: 'wildPick' };
   renderLocal();
 }
 function playWild(kind) {
   const p = currentPlayer();
-  if (G.movesLeft <= 0 || buildKindsHave(p).has(kind)) return;
+  if (G.movesLeft <= 0) return;
   const card = removeFromHand(p, c => c.type === 'action' && c.kind === 'wild');
   if (!card) return;
   G.discardPile.push(card);
-  p.building.push({ id: card.id, kind, isWild: true });
+  const pile = addToBuild(p, kind, card.id, true);
   G.movesLeft--;
   addLog(t('playedIngredient', p.name, `${t('wildLabel')} (${mName(ingMeta(kind))})`));
   triggerEffect('🌟', null, p.id);
   LOCAL_UI.modal = null;
-  finishMoveMaybeCompleteBuild(p);
+  finishMoveMaybeCompletePile(p, pile);
 }
 
 /* ---------------- Force Deal ---------------- */
@@ -1387,7 +1422,7 @@ function openForceDealModal() {
   const p = currentPlayer();
   if (G.movesLeft <= 0 || !p.hand.some(c => c.type === 'action' && c.kind === 'forcedeal')) return;
   if (!p.hand.some(c => c.type === 'ingredient')) return;
-  if (!otherPlayers().some(pl => pl.building.length > 0)) return;
+  if (!otherPlayers().some(pl => pl.builds.length > 0)) return;
   LOCAL_UI.modal = { type: 'forceDealGive' };
   renderLocal();
 }
@@ -1414,12 +1449,10 @@ function confirmForceDeal(kind) {
   offerReaction('forcedeal', p.id, m.targetId, { giveCardId: m.giveCardId, takeKind: kind });
 }
 
-function finishMoveMaybeCompleteBuild(p) {
-  if (buildKindsHave(p).size >= buildTargetCount(p)) {
-    const built = p.building;
-    p.building = [];
-    p.grandmaActive = false;
-    built.forEach(b => G.discardPile.push({ id: b.id, type: 'ingredient', kind: b.kind }));
+function finishMoveMaybeCompletePile(p, pile) {
+  if (pileKindsHave(pile).size >= pileTargetCount(pile)) {
+    p.builds = p.builds.filter(b => b !== pile);
+    pile.cards.forEach(b => G.discardPile.push({ id: b.id, type: 'ingredient', kind: b.kind }));
     const burgerCard = giveBurgerCard(p);
     addLog(t('madeBurger', p.name));
     triggerEffect('🍔✨', t('fxBurger'), p.id);
@@ -1629,14 +1662,15 @@ function confirmInspector() {
 
 function openShoplifterModal() {
   if (G.movesLeft <= 0 || !currentPlayer().hand.some(c => c.type === 'action' && c.kind === 'shoplifter')) return;
-  if (!otherPlayers().some(pl => pl.building.length > 0)) return;
+  if (!otherPlayers().some(pl => pl.builds.length > 0)) return;
   LOCAL_UI.modal = { type: 'shoplifterTarget' };
   renderLocal();
 }
 /* Steals only the TOP (most recently placed) card off the chosen
-   opponent's build row — not a random pick from their whole hand like the
-   old version. Restricting to "top only" keeps it from being a precision
-   snipe of exactly the ingredient the thief needs. */
+   opponent's table — the single most recent placement across all of their
+   piles, not a random pick from their whole hand like the old version.
+   Restricting to "top only" keeps it from being a precision snipe of
+   exactly the ingredient the thief needs. */
 function playShoplifter(targetId) {
   const p = currentPlayer();
   const card = removeFromHand(p, c => c.type === 'action' && c.kind === 'shoplifter');
@@ -1644,8 +1678,8 @@ function playShoplifter(targetId) {
   G.discardPile.push(card);
   G.movesLeft--;
   const target = G.players.find(pl => pl.id === targetId);
-  const top = target.building[target.building.length - 1];
-  const ingName = top ? (top.isWild ? t('wildLabel') : mName(ingMeta(top.kind))) : '';
+  const found = findTopBuildCard(target);
+  const ingName = found ? (found.card.isWild ? t('wildLabel') : mName(ingMeta(found.card.kind))) : '';
   addLog(t('playedShoplifter', p.name, target.name, ingName));
   triggerEffect('🥷', t('fxSteal'), target.id);
   LOCAL_UI.modal = null;
@@ -1777,20 +1811,24 @@ function botDoOneMove(bot) {
   const diff = bot.difficulty || 'medium';
   const chance = (easy, medium, hard) => ({ easy, medium, hard }[diff] ?? medium);
 
-  // Playing a needed ingredient onto the table is always the top priority —
-  // it's free, guaranteed progress with no downside.
-  const neededCard = bot.hand.find(c => c.type === 'ingredient' && !buildKindsHave(bot).has(c.kind));
-  if (neededCard) { playIngredientToBuild(neededCard.id); return true; }
+  // Playing any ingredient onto the table is always the top priority —
+  // it's free, guaranteed progress with no downside (a duplicate kind just
+  // opens a second pile instead of being wasted).
+  const anyIngredient = bot.hand.find(c => c.type === 'ingredient');
+  if (anyIngredient) { playIngredientToBuild(anyIngredient.id); return true; }
 
-  if (hasGrandmaCard(bot) && !bot.grandmaActive) {
-    const willFinishNow = buildKindsHave(bot).size >= 3;
+  if (hasGrandmaCard(bot)) {
+    const targetPile = [...bot.builds].reverse().find(b => !b.grandmaActive);
+    const willFinishNow = targetPile && pileKindsHave(targetPile).size >= 3;
     if (willFinishNow || Math.random() < chance(0.3, 0.6, 0.85)) { playGrandmaShortcut(); return true; }
   }
 
-  if (bot.hand.some(c => c.type === 'action' && c.kind === 'wild') && buildKindsHave(bot).size < buildTargetCount(bot)) {
+  if (bot.hand.some(c => c.type === 'action' && c.kind === 'wild')) {
     if (Math.random() < chance(0.4, 0.7, 0.9)) {
-      const missing = INGREDIENTS.map(i => i.kind).filter(k => !buildKindsHave(bot).has(k));
-      if (missing.length) { playWild(missing[0]); return true; }
+      const allHave = new Set(bot.builds.flatMap(pile => pile.cards.map(c => c.kind)));
+      const missing = INGREDIENTS.map(i => i.kind).filter(k => !allHave.has(k));
+      playWild(missing.length ? missing[0] : INGREDIENTS[0].kind);
+      return true;
     }
   }
 
@@ -1822,8 +1860,7 @@ function botDoOneMove(bot) {
   if (bot.hand.some(c => c.type === 'action' && c.kind === 'forcedeal') && bot.hand.some(c => c.type === 'ingredient')) {
     const target = botPickBuildTarget(bot);
     if (target && Math.random() < chance(0.3, 0.55, 0.8)) {
-      const myKinds = buildKindsHave(bot);
-      const takeKind = [...new Set(target.building.map(b => b.kind))].find(k => !myKinds.has(k));
+      const takeKind = [...new Set(target.builds.flatMap(pile => pile.cards.map(c => c.kind)))][0];
       const giveCard = bot.hand.find(c => c.type === 'ingredient' && c.kind !== takeKind);
       if (takeKind && giveCard) {
         const card = removeFromHand(bot, c => c.type === 'action' && c.kind === 'forcedeal');
@@ -1858,9 +1895,9 @@ function botDoOneMove(bot) {
 }
 
 function botPickNeededIngredientKind(bot) {
-  const have = buildKindsHave(bot);
+  const have = new Set(bot.builds.flatMap(pile => pile.cards.map(c => c.kind)));
   const missing = INGREDIENTS.map(i => i.kind).filter(k => !have.has(k));
-  if (!missing.length) return null;
+  if (!missing.length) return INGREDIENTS[Math.floor(Math.random() * INGREDIENTS.length)].kind;
   return missing[Math.floor(Math.random() * missing.length)];
 }
 
@@ -1874,9 +1911,9 @@ function botPickRichestTarget(bot) {
 /* Prefers whoever's closest to finishing their burger — that's the most
    disruptive target for both Shoplifter and Force Deal. */
 function botPickBuildTarget(bot) {
-  const candidates = otherPlayers().filter(pl => pl.building.length > 0);
+  const candidates = otherPlayers().filter(pl => pl.builds.length > 0);
   if (!candidates.length) return null;
-  candidates.sort((a, b) => b.building.length - a.building.length);
+  candidates.sort((a, b) => totalBuildCards(b) - totalBuildCards(a));
   return candidates[0];
 }
 
@@ -2739,10 +2776,8 @@ function renderStackCard(group, p, forceDisabled) {
    the single fan card and the grouped stack (any card of that kind behaves the same). */
 function cardUsability(c, p) {
   if (c.type === 'ingredient') {
-    let usable = true, reason = null;
-    if (G.movesLeft <= 0) { usable = false; reason = t('reasonNoMoves'); }
-    else if (buildKindsHave(p).has(c.kind)) { usable = false; reason = t('reasonAlreadyBuilt'); }
-    return { usable, handler: usable ? `playIngredientToBuild('${c.id}')` : null, reason };
+    const usable = G.movesLeft > 0;
+    return { usable, handler: usable ? `playIngredientToBuild('${c.id}')` : null, reason: usable ? null : t('reasonNoMoves') };
   }
   let handler = null;
   let usable = true;
@@ -2751,17 +2786,14 @@ function cardUsability(c, p) {
   switch (c.kind) {
     case 'foodtruck': handler = 'playFoodTruck()'; break;
     case 'delivery': handler = 'openDeliveryModal()'; break;
-    case 'grandma':
-      handler = 'playGrandmaShortcut()';
-      if (usable && p.grandmaActive) { usable = false; reason = t('reasonGrandmaAlready'); }
-      break;
+    case 'grandma': handler = 'playGrandmaShortcut()'; break;
     case 'inspector':
       handler = 'openInspectorModal()';
       if (usable && !otherPlayers().some(pl => pl.hand.length > 0)) { usable = false; reason = t('reasonInspectorNoTargets'); }
       break;
     case 'shoplifter':
       handler = 'openShoplifterModal()';
-      if (usable && !otherPlayers().some(pl => pl.building.length > 0)) { usable = false; reason = t('reasonShoplifterNoTargets'); }
+      if (usable && !otherPlayers().some(pl => pl.builds.length > 0)) { usable = false; reason = t('reasonShoplifterNoTargets'); }
       break;
     case 'fly':
       handler = 'openFlyModal()';
@@ -2775,14 +2807,11 @@ function cardUsability(c, p) {
       handler = 'openGustModal()';
       if (usable && !p.burgers.some(b => b.fly)) { usable = false; reason = t('reasonNoFlyOnYours'); }
       break;
-    case 'wild':
-      handler = 'openWildModal()';
-      if (usable && buildKindsHave(p).size >= buildTargetCount(p)) { usable = false; reason = t('reasonAlreadyBuilt'); }
-      break;
+    case 'wild': handler = 'openWildModal()'; break;
     case 'forcedeal':
       handler = 'openForceDealModal()';
       if (usable && !p.hand.some(cc => cc.type === 'ingredient')) { usable = false; reason = t('reasonForceDealNoGive'); }
-      else if (usable && !otherPlayers().some(pl => pl.building.length > 0)) { usable = false; reason = t('reasonShoplifterNoTargets'); }
+      else if (usable && !otherPlayers().some(pl => pl.builds.length > 0)) { usable = false; reason = t('reasonShoplifterNoTargets'); }
       break;
     case 'sayno':
       // Never directly playable from hand — only offered as a reaction prompt.
@@ -3089,17 +3118,22 @@ function renderSeat(pl, isActive, x, y, i, isViewerSeat) {
 /* The in-progress build is deliberately public (everyone's table, not just
    "mine") — that's the whole point of building on the table instead of in
    hand: opponents can see what you're one ingredient away from finishing
-   and target it (Shoplifter steals the top/most-recent card here, Force
-   Deal can take any specific kind from here). */
+   and target it (Shoplifter steals the single most-recent card across all
+   piles, Force Deal can take any specific kind from any pile). A player
+   can have several piles going at once — playing a kind you're already
+   building elsewhere just opens a second one. */
 function renderBuildRow(pl) {
-  if (!pl.building.length) return '';
-  const target = buildTargetCount(pl);
-  const chips = pl.building.map((b, i) => {
-    const meta = ingMeta(b.kind);
-    const isTop = i === pl.building.length - 1;
-    return `<div class="build-chip ${b.isWild ? 'wild' : ''} ${isTop ? 'top' : ''}" title="${escapeHtml(mName(meta))}${b.isWild ? ' (' + t('wildLabel') + ')' : ''}">${meta.ic}</div>`;
+  if (!pl.builds.length) return '';
+  const top = findTopBuildCard(pl);
+  return pl.builds.map(pile => {
+    const target = pileTargetCount(pile);
+    const chips = pile.cards.map(b => {
+      const meta = ingMeta(b.kind);
+      const isTop = top && top.card.id === b.id;
+      return `<div class="build-chip ${b.isWild ? 'wild' : ''} ${isTop ? 'top' : ''}" title="${escapeHtml(mName(meta))}${b.isWild ? ' (' + t('wildLabel') + ')' : ''}">${meta.ic}</div>`;
+    }).join('');
+    return `<div class="build-row">${chips}<div class="build-count">${pile.cards.length}/${target}</div></div>`;
   }).join('');
-  return `<div class="build-row">${chips}<div class="build-count">${pl.building.length}/${target}</div></div>`;
 }
 
 function renderPendingReveal() {
@@ -3223,19 +3257,18 @@ function renderModal() {
   }
 
   if (m.type === 'shoplifterTarget') {
-    const eligible = otherPlayers().filter(pl => pl.building.length > 0);
+    const eligible = otherPlayers().filter(pl => pl.builds.length > 0);
     return wrapModal(t('shoplifterTargetTitle'), `
       <div class="choice-list">
-        ${eligible.map(pl => `<button class="choice-btn" onclick="playShoplifter(${pl.id})">${t('playerBuildCount', escapeHtml(pl.name), pl.building.length)}</button>`).join('')}
+        ${eligible.map(pl => `<button class="choice-btn" onclick="playShoplifter(${pl.id})">${t('playerBuildCount', escapeHtml(pl.name), totalBuildCards(pl))}</button>`).join('')}
       </div>
     `, true);
   }
 
   if (m.type === 'wildPick') {
-    const have = buildKindsHave(p);
     return wrapModal(t('wildPickTitle'), `
       <div class="choice-list">
-        ${INGREDIENTS.filter(i => !have.has(i.kind)).map(i => `<button class="choice-btn" onclick="playWild('${i.kind}')">${i.ic} ${mName(i)}</button>`).join('')}
+        ${INGREDIENTS.map(i => `<button class="choice-btn" onclick="playWild('${i.kind}')">${i.ic} ${mName(i)}</button>`).join('')}
       </div>
     `, true);
   }
@@ -3249,23 +3282,20 @@ function renderModal() {
   }
 
   if (m.type === 'forceDealTarget') {
-    const eligible = otherPlayers().filter(pl => pl.building.length > 0);
+    const eligible = otherPlayers().filter(pl => pl.builds.length > 0);
     return wrapModal(t('forceDealTargetTitle'), `
       <div class="choice-list">
-        ${eligible.map(pl => `<button class="choice-btn" onclick="pickForceDealTarget(${pl.id})">${t('playerBuildCount', escapeHtml(pl.name), pl.building.length)}</button>`).join('')}
+        ${eligible.map(pl => `<button class="choice-btn" onclick="pickForceDealTarget(${pl.id})">${t('playerBuildCount', escapeHtml(pl.name), totalBuildCards(pl))}</button>`).join('')}
       </div>
     `, true);
   }
 
   if (m.type === 'forceDealTake') {
     const target = G.players.find(pl => pl.id === m.targetId);
-    const myKinds = buildKindsHave(p);
-    const takeable = [...new Set(target.building.map(b => b.kind))].filter(k => !myKinds.has(k));
+    const takeable = [...new Set(target.builds.flatMap(pile => pile.cards.map(c => c.kind)))];
     return wrapModal(t('forceDealTakeTitle', escapeHtml(target.name)), `
       <div class="choice-list">
-        ${takeable.length
-          ? takeable.map(k => `<button class="choice-btn" onclick="confirmForceDeal('${k}')">${ingMeta(k).ic} ${mName(ingMeta(k))}</button>`).join('')
-          : `<div class="subtitle">${t('reasonAlreadyBuilt')}</div>`}
+        ${takeable.map(k => `<button class="choice-btn" onclick="confirmForceDeal('${k}')">${ingMeta(k).ic} ${mName(ingMeta(k))}</button>`).join('')}
       </div>
     `, true);
   }
