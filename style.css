@@ -672,6 +672,23 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   80% { transform: rotate(4deg) translateY(-1px); }
 }
 
+/* In-progress burger build, laid out face-up on the table (always public —
+   see renderBuildRow). The most recent card ("top") gets a highlighted
+   ring since it's the only one Shoplifter can steal. */
+.build-row { display: flex; align-items: center; gap: 3px; margin-top: 4px; flex-wrap: nowrap; }
+.build-chip {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--panel-light);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+}
+.build-chip.wild { background: var(--accent-2); }
+.build-chip.top { box-shadow: 0 0 0 2px var(--accent-2), 0 1px 3px rgba(0,0,0,0.35); }
+.build-count { font-size: 10px; color: #d9c4a3; margin-left: 2px; white-space: nowrap; }
+
 .moves-indicator {
   display: flex;
   gap: 6px;
@@ -1235,13 +1252,12 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
    table down to a sliver (or, without the min-height fix on
    .table-region-flex above, to nothing at all). Placed last so it wins
    over both the mobile and min-width:900px rules above by source order. */
-/* Always exactly 3 action buttons (make burger / trade / end turn) — on a
-   narrow phone the default button padding/font made them too wide to fit
-   3-across, so the grid's auto-fit wrapped the 3rd one onto its own row,
-   costing an extra ~50px of height the table could've used instead.
-   Forcing 3 fixed columns with smaller type keeps them in one row. */
+/* Keeps however many action buttons there are (now just Trade/End Turn —
+   ingredients and Grandma's Recipe are played straight from the hand
+   instead of via a "Make a burger" button) on one row on a narrow phone,
+   instead of the default padding making them wide enough to wrap. */
 @media (max-width: 480px) {
-  .actions-row { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .actions-row { grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 6px; }
   .actions-row button { padding: 8px 4px; font-size: 12px; }
 }
 @media (max-height: 700px) {

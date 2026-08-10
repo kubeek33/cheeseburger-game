@@ -15,7 +15,7 @@ const INGREDIENTS = [
 const ACTIONS = [
   { kind: 'foodtruck',  ic: '🚚',
     name: { uk: 'Фудтрак', en: 'Food Truck' },
-    desc: { uk: 'Відкрий верхні 3 карти колоди й забери всі інгредієнти з них.', en: 'Reveal the top 3 cards of the draw pile and take all the ingredients.' } },
+    desc: { uk: 'Візьми 2 верхні карти колоди собі в руку (будь-які).', en: 'Take the top 2 cards of the draw pile into your hand (any kind).' } },
   { kind: 'delivery',   ic: '📦',
     name: { uk: "Кур'єр", en: 'Delivery Guy' },
     desc: { uk: 'Оголоси інгредієнт — всі інші гравці віддають тобі всі такі карти.', en: 'Call an ingredient — all other players give you every card of that kind.' } },
@@ -27,7 +27,7 @@ const ACTIONS = [
     desc: { uk: 'Подивись руку одного гравця і візьми собі 2 карти.', en: "Look through one player's hand and take 2 cards for yourself." } },
   { kind: 'shoplifter', ic: '🥷',
     name: { uk: 'Крадій', en: 'Shoplifter' },
-    desc: { uk: 'Вкради по 1 випадковій карті у всіх інших гравців.', en: 'Steal 1 random card from every other player.' } },
+    desc: { uk: 'Вкради верхню (останню викладену) картку зі столу одного суперника.', en: "Steal the top (most recently placed) card off one opponent's table." } },
   { kind: 'fly',        ic: '🪰',
     name: { uk: 'Муха', en: 'Fly' },
     desc: { uk: 'Постав муху на чізбургер іншого гравця — він недійсний, поки муху не приберуть.', en: "Place a fly on another player's burger — it doesn't count until the fly is removed." } },
@@ -37,15 +37,27 @@ const ACTIONS = [
   { kind: 'gust',       ic: '🌬️',
     name: { uk: 'Порив вітру', en: 'Gust of Wind' },
     desc: { uk: 'Здуй свою муху на чізбургер іншого гравця.', en: "Blow your fly onto another player's burger." } },
+  { kind: 'wild',       ic: '🌟',
+    name: { uk: 'Вайлд-інгредієнт', en: 'Wild Ingredient' },
+    desc: { uk: 'Виклади на свій стіл замість будь-якого інгредієнта на вибір.', en: 'Play onto your table as any one ingredient of your choice.' } },
+  { kind: 'forcedeal',  ic: '🤝',
+    name: { uk: 'Примусовий обмін', en: 'Force Deal' },
+    desc: { uk: 'Віддай непотрібний інгредієнт і забери будь-який інгредієнт зі столу суперника — відмовитись не можна.', en: "Give away one ingredient and take any ingredient off an opponent's table — they can't refuse." } },
+  { kind: 'sayno',      ic: '🙅',
+    name: { uk: 'Скажи Ні', en: 'Just Say No' },
+    desc: { uk: 'Зіграй у відповідь, щоб скасувати дію суперника проти тебе.', en: "Play in response to cancel an opponent's action against you." } },
 ];
 
-/* Final physical print spec — fixed 108-card deck for 2–6 players:
-   60 ingredients (12x5) + 30 action cards + 18 burger cards */
-const ACTION_COUNTS = { foodtruck: 4, delivery: 4, grandma: 3, inspector: 4, shoplifter: 4, fly: 5, swatter: 3, gust: 3 };
+/* Final physical print spec — fixed deck for 2–6 players:
+   60 ingredients (12x5) + 37 action cards + 18 burger cards = 115 total. Say No is
+   deliberately scarce (2 copies) — like Monopoly Deal's "Just Say No",
+   chains of it countering it are allowed (see offerReaction/respondSayNo),
+   naturally bounded by there only being 2 in the whole deck. */
+const ACTION_COUNTS = { foodtruck: 4, delivery: 4, grandma: 3, inspector: 4, shoplifter: 4, fly: 5, swatter: 3, gust: 3, wild: 3, forcedeal: 2, sayno: 2 };
 const INGREDIENT_COUNT_PER_KIND = 12;
 const BURGER_PILE_SINGLES = 10; // value-1 cards
 const BURGER_PILE_DOUBLES = 8;  // value-2 cards
-const WIN_THRESHOLD = 5;
+const WIN_THRESHOLD = 4;
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 6;
 
@@ -305,6 +317,8 @@ const STRINGS = {
     otherTurnBot: (name) => `🤖 Хід бота ${name}`,
     notYourTurn: 'Зараз не твій хід',
     waitingForTradeResponse: (target, from) => `⏳ ${target} обмірковує пропозицію обміну від ${from}...`,
+    waitingForSayNoResponse: (target) => `⏳ ${target} вирішує, чи казати "Ні"...`,
+    botConsideringSayNo: (name) => `🤖 ${name} вирішує, чи казати "Ні"...`,
     waitingTitle: 'Очікування',
     howManyTotal: 'Скільки гравців разом з тобою?',
     difficultyLabel: 'Рівень складності ботів',
@@ -340,21 +354,26 @@ const STRINGS = {
     pileDraw: '🍞 Колода',
     pileDiscard: '🗑️ Скид',
     pileBurgers: '🍔 Стос',
-    makeBurgerBtn: '🍔 Приготувати бургер',
     tradeBtn: '🔄 Обмін',
     endTurnBtn: '➡️ Завершити хід',
-    handLabel: (n) => `Твоя рука (${n} карт) — торкнись картки дії, щоб зіграти її`,
+    handLabel: (n) => `Твоя рука (${n} карт) — торкнись картки, щоб зіграти її`,
     burgerProgress: (sum, threshold) => `${sum}/${threshold} 🍔`,
     burgerTooltip: (v) => `Чізбургер — ${v} 🍔`,
     burgerTooltipFly: (v) => `Чізбургер — ${v} 🍔 (не рахується, поки не прибрати муху 🪰)`,
     burgerRevealText: (v) => `🍔 Тобі випав чізбургер номіналом ${v}!`,
-    foodTruckRevealTitle: 'Фудтрак — відкриті карти:',
-    makeBurgerModalTitle: '🍔 Приготувати чізбургер',
-    classicOption: (ok, missingNames) => `Класичний рецепт — усі 5 інгредієнтів ${ok ? '✅' : `❌ (бракує: ${missingNames})`}`,
-    makeClassicBtn: '🍔 Приготувати класичний бургер',
-    grandmaHint: '👵 Бабусин рецепт — обери рівно 3 різні інгредієнти:',
-    grandmaConfirm: (n) => `Приготувати за бабусиним рецептом (${n}/3)`,
-    grandmaModalTitle: '👵 Бабусин рецепт',
+    wildLabel: 'вайлд',
+    wildPickTitle: '🌟 Вайлд — обери, яким інгредієнтом стане',
+    shoplifterTargetTitle: '🥷 Крадій — вкради верхню картку зі столу гравця',
+    playerBuildCount: (name, n) => `${name} (${n} на столі)`,
+    forceDealGiveTitle: '🤝 Примусовий обмін — віддай інгредієнт',
+    forceDealTargetTitle: '🤝 Примусовий обмін — обери гравця',
+    forceDealTakeTitle: (name) => `🤝 Візьми зі столу гравця ${name}`,
+    sayNoPromptTitle: (actorName, cardName) => `${actorName} грає "${cardName}" проти тебе!`,
+    sayNoPromptBody: 'Хочеш зіграти "Скажи Ні" й скасувати цю дію?',
+    sayNoConfirm: '🙅 Скажи Ні!',
+    sayNoDecline: 'Дозволити',
+    saidNo: (name) => `🙅 ${name} каже "Ні!" — дію скасовано.`,
+    fxSayNo: 'Скажи Ні!',
     tradeTargetTitle: '🔄 Обмін — обери гравця',
     playerCardsCount: (name, n) => `${name} (${n} карт)`,
     tradeOfferTitle2: (name) => `🔄 Обмін з ${name}`,
@@ -398,15 +417,16 @@ const STRINGS = {
     reshuffled: 'Колоду скидів перетасовано назад у колоду для взяття карт.',
     drawCards: (name, n) => `${name} бере ${n} карт(и) з колоди.`,
     burgerPileEmpty: 'Стос чізбургерів порожній!',
-    madeClassic: (name) => `🍔 ${name} готує чізбургер (5 інгредієнтів)!`,
-    madeGrandma: (name) => `🍔 ${name} готує чізбургер за бабусиним рецептом (3 інгредієнти)!`,
+    playedIngredient: (name, ing) => `${name} викладає ${ing} на стіл.`,
+    playedGrandma: (name) => `👵 ${name} грає Бабусин рецепт — тепер потрібно лише 3 інгредієнти!`,
+    madeBurger: (name) => `🍔 ${name} завершує чізбургер!`,
     tradeDeclined: (to, from) => `${to} відхилив(ла) пропозицію обміну від ${from}.`,
     tradeAccepted: (from, to) => `🤝 ${from} та ${to} успішно обмінялися картами.`,
-    playedFoodTruck: (name, kept) => `🚚 ${name} грає Фудтрак і забирає ${kept} інгредієнт(и).`,
+    playedFoodTruck: (name, kept) => `🚚 ${name} грає Фудтрак і бере ${kept} карт(и) з колоди.`,
     playedDelivery: (name, ing, total) => `📦 ${name} грає Кур'єра: оголосив "${ing}" і отримав ${total} карт(и).`,
     playedInspector: (name, target) => `🕵️ ${name} грає Санінспектора проти ${target} і бере 2 карти.`,
-    playedShoplifter: (name, victims) => `🥷 ${name} грає Крадія і краде по 1 карті у: ${victims}.`,
-    playedShoplifterNone: (name) => `🥷 ${name} грає Крадія, але ні в кого немає карт для крадіжки.`,
+    playedShoplifter: (name, target, ing) => `🥷 ${name} краде ${ing} зі столу гравця ${target}.`,
+    playedForceDeal: (name, target, given, taken) => `🤝 ${name} віддає ${given} гравцю ${target} і забирає ${taken} з його столу.`,
     playedFly: (name, target) => `🪰 ${name} підкидає муху на чізбургер гравця ${target}.`,
     playedSwatter: (name) => `🏏 ${name} вбиває муху на своєму чізбургері!`,
     playedGust: (name, target) => `🌬️ ${name} здуває муху на чізбургер гравця ${target}.`,
@@ -414,10 +434,14 @@ const STRINGS = {
     winByThreshold: (name, n) => `${name} набрав ${n}+ чізбургерів і перемагає!`,
     pileDepleted: 'Стос чізбургерів вичерпано!',
     reasonNoMoves: 'Не залишилось ходів у цьому ході',
-    reasonGrandmaIngredients: 'Потрібно щонайменше 3 різні інгредієнти в руці',
+    reasonGrandmaAlready: 'Бабусин рецепт вже діє для поточного бургера',
+    reasonAlreadyBuilt: 'Цей інгредієнт вже викладено на стіл',
     reasonInspectorNoTargets: 'У жодного суперника немає карт на руках',
+    reasonShoplifterNoTargets: 'У жодного суперника немає інгредієнтів на столі',
+    reasonForceDealNoGive: 'У тебе немає інгредієнтів для обміну',
     reasonFlyNoTargets: 'У жодного суперника немає готового чізбургера',
     reasonNoFlyOnYours: 'На твоєму чізбургері немає мухи',
+    reasonSayNoReactive: 'Цю карту можна зіграти лише у відповідь на дію суперника',
     newBadge: 'НОВА',
     groupBtn: '📚 Групувати',
     fanBtn: '🎴 Віялом',
@@ -462,6 +486,8 @@ const STRINGS = {
     otherTurnBot: (name) => `🤖 ${name}'s turn`,
     notYourTurn: "It's not your turn",
     waitingForTradeResponse: (target, from) => `⏳ ${target} is considering a trade offer from ${from}...`,
+    waitingForSayNoResponse: (target) => `⏳ ${target} is deciding whether to say "No"...`,
+    botConsideringSayNo: (name) => `🤖 ${name} is deciding whether to say "No"...`,
     waitingTitle: 'Waiting',
     howManyTotal: 'How many players total, including you?',
     difficultyLabel: 'Bot difficulty',
@@ -497,21 +523,26 @@ const STRINGS = {
     pileDraw: '🍞 Draw',
     pileDiscard: '🗑️ Discard',
     pileBurgers: '🍔 Burgers',
-    makeBurgerBtn: '🍔 Make a burger',
     tradeBtn: '🔄 Trade',
     endTurnBtn: '➡️ End turn',
-    handLabel: (n) => `Your hand (${n} cards) — tap an action card to play it`,
+    handLabel: (n) => `Your hand (${n} cards) — tap a card to play it`,
     burgerProgress: (sum, threshold) => `${sum}/${threshold} 🍔`,
     burgerTooltip: (v) => `Cheeseburger — ${v} 🍔`,
     burgerTooltipFly: (v) => `Cheeseburger — ${v} 🍔 (doesn't count until the fly is removed 🪰)`,
     burgerRevealText: (v) => `🍔 You got a value-${v} cheeseburger!`,
-    foodTruckRevealTitle: 'Food Truck — revealed cards:',
-    makeBurgerModalTitle: '🍔 Make a cheeseburger',
-    classicOption: (ok, missingNames) => `Classic recipe — all 5 ingredients ${ok ? '✅' : `❌ (missing: ${missingNames})`}`,
-    makeClassicBtn: '🍔 Make the classic burger',
-    grandmaHint: "👵 Grandma's Recipe — pick exactly 3 different ingredients:",
-    grandmaConfirm: (n) => `Make it with Grandma's Recipe (${n}/3)`,
-    grandmaModalTitle: "👵 Grandma's Recipe",
+    wildLabel: 'wild',
+    wildPickTitle: '🌟 Wild — choose which ingredient it becomes',
+    shoplifterTargetTitle: "🥷 Shoplifter — steal the top card off a player's table",
+    playerBuildCount: (name, n) => `${name} (${n} on the table)`,
+    forceDealGiveTitle: '🤝 Force Deal — give up an ingredient',
+    forceDealTargetTitle: '🤝 Force Deal — choose a player',
+    forceDealTakeTitle: (name) => `🤝 Take from ${name}'s table`,
+    sayNoPromptTitle: (actorName, cardName) => `${actorName} plays "${cardName}" against you!`,
+    sayNoPromptBody: 'Do you want to play "Just Say No" and cancel it?',
+    sayNoConfirm: '🙅 Just Say No!',
+    sayNoDecline: 'Allow it',
+    saidNo: (name) => `🙅 ${name} says "No!" — the action is cancelled.`,
+    fxSayNo: 'Just Say No!',
     tradeTargetTitle: '🔄 Trade — choose a player',
     playerCardsCount: (name, n) => `${name} (${n} cards)`,
     tradeOfferTitle2: (name) => `🔄 Trade with ${name}`,
@@ -555,15 +586,16 @@ const STRINGS = {
     reshuffled: 'The discard pile was reshuffled back into the draw pile.',
     drawCards: (name, n) => `${name} draws ${n} card(s) from the deck.`,
     burgerPileEmpty: 'The burger pile is empty!',
-    madeClassic: (name) => `🍔 ${name} makes a cheeseburger (5 ingredients)!`,
-    madeGrandma: (name) => `🍔 ${name} makes a cheeseburger with Grandma's Recipe (3 ingredients)!`,
+    playedIngredient: (name, ing) => `${name} plays ${ing} onto the table.`,
+    playedGrandma: (name) => `👵 ${name} plays Grandma's Recipe — now only 3 ingredients are needed!`,
+    madeBurger: (name) => `🍔 ${name} completes a cheeseburger!`,
     tradeDeclined: (to, from) => `${to} declined the trade offer from ${from}.`,
     tradeAccepted: (from, to) => `🤝 ${from} and ${to} successfully traded cards.`,
-    playedFoodTruck: (name, kept) => `🚚 ${name} plays Food Truck and takes ${kept} ingredient(s).`,
+    playedFoodTruck: (name, kept) => `🚚 ${name} plays Food Truck and draws ${kept} card(s).`,
     playedDelivery: (name, ing, total) => `📦 ${name} plays Delivery Guy: called "${ing}" and received ${total} card(s).`,
     playedInspector: (name, target) => `🕵️ ${name} plays Health Inspector on ${target} and takes 2 cards.`,
-    playedShoplifter: (name, victims) => `🥷 ${name} plays Shoplifter and steals a card from: ${victims}.`,
-    playedShoplifterNone: (name) => `🥷 ${name} plays Shoplifter, but no one has any cards to steal.`,
+    playedShoplifter: (name, target, ing) => `🥷 ${name} steals ${ing} off ${target}'s table.`,
+    playedForceDeal: (name, target, given, taken) => `🤝 ${name} gives ${given} to ${target} and takes ${taken} off their table.`,
     playedFly: (name, target) => `🪰 ${name} tosses a fly onto ${target}'s burger.`,
     playedSwatter: (name) => `🏏 ${name} swats the fly off their burger!`,
     playedGust: (name, target) => `🌬️ ${name} blows the fly onto ${target}'s burger.`,
@@ -571,9 +603,13 @@ const STRINGS = {
     winByThreshold: (name, n) => `${name} reached ${n}+ cheeseburgers and wins!`,
     pileDepleted: 'The burger pile ran out!',
     reasonNoMoves: 'No moves left this turn',
-    reasonGrandmaIngredients: 'You need at least 3 different ingredients in hand',
+    reasonGrandmaAlready: "Grandma's Recipe is already active for this burger",
+    reasonAlreadyBuilt: 'That ingredient is already on the table',
     reasonInspectorNoTargets: 'No opponent has any cards in hand',
+    reasonShoplifterNoTargets: 'No opponent has anything on their table',
+    reasonForceDealNoGive: 'You have no ingredients to trade away',
     reasonFlyNoTargets: 'No opponent has a finished burger',
+    reasonSayNoReactive: 'This card can only be played in response to an opponent’s action',
     reasonNoFlyOnYours: "You don't have a fly on your burger",
     newBadge: 'NEW',
     groupBtn: '📚 Group',
@@ -625,15 +661,16 @@ function rulesHtml() {
 
   if (uk) {
     return `
-      <p><b>${MIN_PLAYERS}–${MAX_PLAYERS} гравців · 15–30 хвилин</b></p>
+      <p><b>${MIN_PLAYERS}–${MAX_PLAYERS} гравців · 20–40 хвилин</b></p>
       <p>У містечку, де живуть гравці, немає нічого крутішого за ідеальний чізбургер.
       Але потрібні інгредієнти рідкісні, тож усі стають за грилі й змагаються, хто
-      приготує більше чізбургерів.</p>
+      приготує більше чізбургерів. Бургер збирається прямо на столі перед гравцем,
+      картка за карткою — тож усі бачать, наскільки суперник близький до завершення.</p>
 
-      <h4>Компоненти (108 карток)</h4>
+      <h4>Компоненти</h4>
       <ul>
         <li><b>60 карт інгредієнтів</b> — по ${INGREDIENT_COUNT_PER_KIND} карток кожного з 5 видів: ${ingredientNames}.</li>
-        <li><b>30 карт дій</b> — ${actionCountsLine}.</li>
+        <li><b>Карти дій</b> — ${actionCountsLine}.</li>
         <li><b>18 карт чізбургерів</b> (окрема колода, сорочкою догори) — ${BURGER_PILE_SINGLES} карток вартістю 1 і ${BURGER_PILE_DOUBLES} карток вартістю 2.</li>
       </ul>
       ${cardGallery}
@@ -641,20 +678,19 @@ function rulesHtml() {
       <h4>Підготовка</h4>
       <ol>
         <li>Перетасуйте 18 карт чізбургерів окремо — це стос чізбургерів, кладіть його сорочкою догори в центр столу.</li>
-        <li>Перетасуйте разом усі 60 карт інгредієнтів та 30 карт дій.</li>
+        <li>Перетасуйте разом усі карти інгредієнтів та дій.</li>
         <li>Роздайте кожному гравцю по 7 карт.</li>
         <li>Решта карт — колода для взяття, кладіть поруч сорочкою догори.</li>
       </ol>
 
       <h4>Хід гравця</h4>
-      <p>Ходи йдуть за годинниковою стрілкою. Хто останній їв чізбургер — ходить першим
-      (або довільно, якщо невідомо). На своєму ході гравець:</p>
+      <p>Ходи йдуть за годинниковою стрілкою. На своєму ході гравець:</p>
       <ol>
         <li>Бере 2 карти з колоди (це не рахується як хід).</li>
         <li>Робить <b>до 3 ходів</b> у будь-якому порядку й комбінації:</li>
       </ol>
       <ul>
-        <li><b>Приготувати чізбургер</b> — зібрати по 1 картці кожного з 5 інгредієнтів, скинути їх і взяти верхню карту зі стосу чізбургерів.</li>
+        <li><b>Викласти інгредієнт на стіл</b> — кожна картка інгредієнта з руки, викладена на свій стіл, це окремий хід. Коли на столі зібрано всі 5 різних видів (або 3, якщо зіграно Бабусин рецепт) — бургер одразу завершується цим же ходом: карти скидаються, гравець бере верхню картку зі стосу чізбургерів.</li>
         <li><b>Обмін</b> — запропонувати одному гравцю обмін картами (1 на 1): віддай одну свою карту й вкажи, що хочеш отримати натомість (конкретний інгредієнт, будь-яку карту дії або без різниці). Гравець може погодитись, давши відповідну карту, або відмовитись; відмова не рахується як витрачений хід.</li>
         <li><b>Зіграти карту дії</b> — розіграти одну з карт дій (описи нижче). Кожна зіграна карта дії — окремий хід.</li>
       </ul>
@@ -662,7 +698,13 @@ function rulesHtml() {
 
       <h4>Карти дій</h4>
       <ul>${actionListItems}</ul>
-      <p>Бабусин рецепт: скинь картку + 3 різних інгредієнти замість 5 і одразу візьми чізбургер.</p>
+
+      <h4>Скажи Ні</h4>
+      <p>Санінспектор, Муха, Порив вітру, Крадій і Примусовий обмін цілять в конкретного
+      гравця — той може у відповідь зіграти «Скажи Ні», щоб скасувати саму дію
+      (картка й хід нападника все одно витрачені, скасовується лише ефект). На «Скажи Ні»
+      теж можна відповісти своїм «Скажи Ні» — і так по колу, поки в когось лишається
+      картка; всього їх у грі ${ACTION_COUNTS.sayno}, тож ланцюжок сам собою обривається.</p>
 
       <h4>Муха на чізбургері</h4>
       <p>Картка «Муха» кладеться на один з готових чізбургерів суперника — така картка не
@@ -680,15 +722,16 @@ function rulesHtml() {
   }
 
   return `
-    <p><b>${MIN_PLAYERS}–${MAX_PLAYERS} players · 15–30 minutes</b></p>
+    <p><b>${MIN_PLAYERS}–${MAX_PLAYERS} players · 20–40 minutes</b></p>
     <p>In a town where nothing beats a perfect cheeseburger, the ingredients are scarce
     and everyone's manning their own grill, racing to make more cheeseburgers than
-    anyone else.</p>
+    anyone else. Burgers are assembled right on the table in front of each player,
+    card by card — so everyone can see exactly how close their rivals are.</p>
 
-    <h4>Components (108 cards)</h4>
+    <h4>Components</h4>
     <ul>
       <li><b>60 ingredient cards</b> — ${INGREDIENT_COUNT_PER_KIND} of each of the 5 kinds: ${ingredientNames}.</li>
-      <li><b>30 action cards</b> — ${actionCountsLine}.</li>
+      <li><b>Action cards</b> — ${actionCountsLine}.</li>
       <li><b>18 burger cards</b> (a separate face-down deck) — ${BURGER_PILE_SINGLES} cards worth 1 and ${BURGER_PILE_DOUBLES} cards worth 2.</li>
     </ul>
     ${cardGallery}
@@ -696,20 +739,19 @@ function rulesHtml() {
     <h4>Setup</h4>
     <ol>
       <li>Shuffle the 18 burger cards separately — this is the burger pile, place it face-down in the middle of the table.</li>
-      <li>Shuffle all 60 ingredient cards and 30 action cards together.</li>
+      <li>Shuffle all the ingredient and action cards together.</li>
       <li>Deal 7 cards to each player.</li>
       <li>The rest becomes the draw pile — place it face-down nearby.</li>
     </ol>
 
     <h4>Turn overview</h4>
-    <p>Turns go clockwise. Whoever last ate a cheeseburger goes first (or pick randomly
-    if unknown). On their turn, a player:</p>
+    <p>Turns go clockwise. On their turn, a player:</p>
     <ol>
       <li>Draws 2 cards from the draw pile (this doesn't count as a move).</li>
       <li>Makes <b>up to 3 moves</b> in any order or combination:</li>
     </ol>
     <ul>
-      <li><b>Make a cheeseburger</b> — collect 1 card of each of the 5 ingredients, discard them, and take the top card of the burger pile.</li>
+      <li><b>Play an ingredient onto the table</b> — each ingredient card played from your hand onto your own table is a separate move. Once all 5 different kinds are on the table (or 3, if Grandma's Recipe was played), the burger completes immediately as part of that same move: the cards are discarded and you take the top card of the burger pile.</li>
       <li><b>Trade</b> — offer another player a 1-for-1 card trade: give up one of your cards and say what you want back (a specific ingredient, any action card, or no preference). They can accept by handing over a matching card, or decline; a decline doesn't cost you the move.</li>
       <li><b>Play an action card</b> — play one of the action cards (described below). Each action card played is a separate move.</li>
     </ul>
@@ -717,7 +759,14 @@ function rulesHtml() {
 
     <h4>Action cards</h4>
     <ul>${actionListItems}</ul>
-    <p>Grandma's Recipe: discard the card plus 3 different ingredients instead of 5, and immediately take a burger card.</p>
+
+    <h4>Just Say No</h4>
+    <p>Health Inspector, Fly, Gust of Wind, Shoplifter, and Force Deal all target one
+    specific player — that player can respond with "Just Say No" to cancel the effect
+    (the mover's card and move are still spent; only the payoff is cancelled). Just Say
+    No can itself be answered with another Just Say No, and so on for as long as
+    someone still has one — there are only ${ACTION_COUNTS.sayno} in the whole deck, so
+    the chain is naturally short.</p>
 
     <h4>Fly on your burger</h4>
     <p>The Fly card is placed on one of an opponent's finished burger cards — that card
@@ -770,6 +819,9 @@ const CARD_ART = {
     fly: 'assets/cards/fly.svg',
     swatter: 'assets/cards/swatter.svg',
     gust: 'assets/cards/gust.svg',
+    wild: 'assets/cards/wild.svg',
+    forcedeal: 'assets/cards/forcedeal.svg',
+    sayno: 'assets/cards/sayno.svg',
   },
 };
 const BACK_ART = { generic: 'assets/cards/back-all.svg', burger: 'assets/cards/back-burger.svg' };
@@ -997,13 +1049,13 @@ function newGame(names, options) {
   const vsBots = !!options.vsBots;
   const deck = shuffle(buildDeck());
   const burgerPile = shuffle(buildBurgerPile());
-  const players = names.map((name, i) => ({ id: i, name, avatar: avatars[i] || null, hand: [], burgers: [], isBot: !!isBotFlags[i], difficulty }));
+  const players = names.map((name, i) => ({ id: i, name, avatar: avatars[i] || null, hand: [], burgers: [], building: [], grandmaActive: false, isBot: !!isBotFlags[i], difficulty }));
   LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null, logToasts: [], lastLogSeq: undefined, logToastTimer: null, animatedIds: new Set(), logHistoryOpen: false, avatarModal: null };
   G = {
     players, drawPile: deck, discardPile: [], burgerPile,
     currentPlayerIndex: 0, movesLeft: 3,
     log: [], logSeq: 0, phase: 'pass', passTarget: 0, passPurpose: 'startTurn',
-    tradeState: null, pendingReveal: null, winner: null, endReason: null,
+    tradeState: null, pendingReveal: null, reaction: null, winner: null, endReason: null,
     newCardIds: new Set(), newCardTimer: null,
     vsBots, online: !!options.online,
   };
@@ -1096,6 +1148,11 @@ function confirmPassReveal() {
     Sfx.play('turn');
   } else if (purpose === 'tradeRespond') {
     G.phase = 'tradeRespond';
+  } else if (purpose === 'sayNoRespond') {
+    G.phase = 'sayNoRespond';
+  } else if (purpose === 'applyReaction') {
+    applyReaction();
+    return;
   } else if (purpose === 'tradeBack' || purpose === 'backToGame') {
     G.phase = 'game';
     scheduleNewCardExpiry();
@@ -1103,20 +1160,137 @@ function confirmPassReveal() {
   render();
 }
 
-/* ---------------- Burger making ---------------- */
-
-function canMakeClassic(p) {
-  const kinds = new Set(p.hand.filter(c => c.type === 'ingredient').map(c => c.kind));
-  return INGREDIENTS.every(i => kinds.has(i.kind));
+/* ---------------- Say No / reaction flow ----------------
+   Certain action cards target one specific opponent (Health Inspector,
+   Fly, Gust of Wind, Shoplifter, Force Deal) and can be answered with a
+   "Just Say No" card. Rather than applying their effect immediately, the
+   caller logs what was attempted, then routes the actual effect through
+   here — reusing the same pass-device/bot-auto/online-gated machinery
+   Trade already uses, so hotseat hands the device to the target, vsBots
+   asks the bot AI, and online waits for that player's own client. */
+function offerReaction(kind, actorId, targetId, extra) {
+  G.reaction = { kind, actorId, targetId, extra: extra || null };
+  const target = G.players.find(p => p.id === targetId);
+  const hasSayNo = target && target.hand.some(c => c.type === 'action' && c.kind === 'sayno');
+  if (!hasSayNo) { applyReaction(); return; }
+  goToPassCover(targetId, 'sayNoRespond');
 }
-function missingClassicIngredients(p) {
-  const kinds = new Set(p.hand.filter(c => c.type === 'ingredient').map(c => c.kind));
-  return INGREDIENTS.filter(i => !kinds.has(i.kind));
+
+function respondSayNo(useSayNo) {
+  const r = G.reaction;
+  if (!r) return;
+  const target = G.players.find(p => p.id === r.targetId);
+  if (useSayNo) {
+    const card = removeFromHand(target, c => c.type === 'action' && c.kind === 'sayno');
+    if (card) G.discardPile.push(card);
+    addLog(t('saidNo', target.name));
+    triggerEffect('🙅', t('fxSayNo'), target.id);
+    G.reaction = null;
+    goToPassCover(r.actorId, 'backToGame');
+  } else {
+    goToPassCover(r.actorId, 'applyReaction');
+  }
+}
+
+/* Applies the actually-reacted-to effect once nobody's saying no (or once
+   the responder declined to). Card/move cost was already paid up front by
+   the caller — this only ever resolves the payoff, so a cancelled action
+   still cost its mover the card and the move, matching how Health
+   Inspector's anti-exploit fix already worked before Say No existed. */
+function applyReaction() {
+  const r = G.reaction;
+  G.phase = 'game';
+  G.reaction = null;
+  if (!r) { render(); return; }
+  const actor = G.players.find(p => p.id === r.actorId);
+  const target = G.players.find(p => p.id === r.targetId);
+  switch (r.kind) {
+    case 'inspector': {
+      if (actor.isBot) {
+        const have = new Set(actor.hand.filter(c => c.type === 'ingredient').map(c => c.kind));
+        const sorted = target.hand.slice().sort((a, b) => {
+          const aScore = a.type === 'ingredient' && !have.has(a.kind) ? 1 : 0;
+          const bScore = b.type === 'ingredient' && !have.has(b.kind) ? 1 : 0;
+          return bScore - aScore;
+        });
+        const taken = [];
+        for (let i = 0; i < 2 && sorted.length; i++) {
+          const c = sorted.shift();
+          removeFromHand(target, cc => cc.id === c.id);
+          actor.hand.push(c);
+          taken.push(c);
+        }
+        markNewCards(taken.map(c => c.id));
+      } else {
+        LOCAL_UI.modal = { type: 'inspectorView', targetId: target.id, picked: [] };
+      }
+      break;
+    }
+    case 'fly': {
+      const slot = target.burgers.find(b => !b.fly);
+      if (slot) slot.fly = true;
+      break;
+    }
+    case 'gust': {
+      const slot = target.burgers.find(b => !b.fly);
+      if (slot) slot.fly = true;
+      else target.burgers.push({ id: 'ghost' + Date.now(), value: 0, fly: true });
+      break;
+    }
+    case 'shoplifter': {
+      const stolen = target.building.pop();
+      if (stolen) {
+        actor.hand.push(stolen.isWild ? { id: stolen.id, type: 'action', kind: 'wild' } : { id: stolen.id, type: 'ingredient', kind: stolen.kind });
+        markNewCards([stolen.id]);
+      }
+      break;
+    }
+    case 'forcedeal': {
+      const { giveCardId, takeKind } = r.extra;
+      const given = removeFromHand(actor, c => c.id === giveCardId);
+      if (given) target.hand.push(given);
+      const idx = target.building.findIndex(b => b.kind === takeKind);
+      if (idx >= 0) {
+        const [taken] = target.building.splice(idx, 1);
+        actor.building.push(taken);
+        markNewCards([taken.id]);
+        finishMoveMaybeCompleteBuild(actor);
+        return; // finishMoveMaybeCompleteBuild already calls render()
+      }
+      break;
+    }
+  }
+  scheduleNewCardExpiry();
+  resumeBotIfNeeded();
+  render();
+}
+
+function botDecideSayNo() { return Math.random() < 0.6; }
+
+/* Bots decide/auto-resolve reactions instantly for each other (and for the
+   "no Say No held" fast path) with no UI — offerReaction() only ever pauses
+   for a human target. This resumes a bot's own turn after it was
+   interrupted to let a human target react to something the bot played. */
+function resumeBotIfNeeded() {
+  if (!G || G.phase !== 'game' || G.movesLeft <= 0) return;
+  const cp = currentPlayer();
+  if (cp && cp.isBot) setTimeout(() => botMoveStep(cp), BOT_ACT_DELAY);
+}
+
+/* ---------------- Burger building (on the table) ----------------
+   Ingredients are no longer assembled from hand in one shot — each one is
+   played onto the player's own build row individually (like Monopoly
+   Deal's face-up property sets), one card = one move. This is slower by
+   design (see WIN_THRESHOLD, lowered to match) but makes progress visible
+   and stealable/tradeable via Shoplifter and Force Deal. */
+function buildKindsHave(p) { return new Set(p.building.map(b => b.kind)); }
+function buildTargetCount(p) { return p.grandmaActive ? 3 : 5; }
+function missingBuildIngredients(p) {
+  const have = buildKindsHave(p);
+  if (p.grandmaActive) return []; // any 3 distinct kinds qualify, no fixed missing list
+  return INGREDIENTS.filter(i => !have.has(i.kind));
 }
 function hasGrandmaCard(p) { return p.hand.some(c => c.type === 'action' && c.kind === 'grandma'); }
-function distinctIngredientKinds(p) {
-  return [...new Set(p.hand.filter(c => c.type === 'ingredient').map(c => c.kind))];
-}
 
 function giveBurgerCard(p) {
   if (G.burgerPile.length === 0) { addLog(t('burgerPileEmpty')); return null; }
@@ -1147,40 +1321,113 @@ function removeFromHand(p, predicate) {
   return p.hand.splice(idx, 1)[0];
 }
 
-function doMakeClassic() {
+/* Plays one ingredient card from hand onto the current player's own build
+   row. Completing the set (3 distinct kinds with Grandma active, 5
+   otherwise) happens automatically as part of this same move — no extra
+   move to "collect" the finished burger. */
+function playIngredientToBuild(cardId) {
   const p = currentPlayer();
-  if (G.movesLeft <= 0 || !canMakeClassic(p)) return;
-  INGREDIENTS.forEach(ing => {
-    const card = removeFromHand(p, c => c.type === 'ingredient' && c.kind === ing.kind);
-    G.discardPile.push(card);
-  });
-  const burgerCard = giveBurgerCard(p);
+  if (G.movesLeft <= 0) return;
+  const card = p.hand.find(c => c.id === cardId);
+  if (!card || card.type !== 'ingredient') return;
+  if (buildKindsHave(p).has(card.kind)) return; // already have this kind on the table
+  removeFromHand(p, c => c.id === cardId);
+  p.building.push({ id: card.id, kind: card.kind, isWild: false });
   G.movesLeft--;
-  addLog(t('madeClassic', p.name));
-  triggerEffect('🍔✨', t('fxBurger'), p.id);
-  if (burgerCard && isMe(p.id)) showBurgerReveal(burgerCard.value);
-  afterBurgerMade();
+  addLog(t('playedIngredient', p.name, mName(ingMeta(card.kind))));
+  triggerEffect(ingMeta(card.kind).ic, null, p.id);
+  finishMoveMaybeCompleteBuild(p);
 }
 
-function doMakeGrandma(overrideKinds) {
+/* Grandma's Recipe no longer pre-selects 3 ingredients from hand — playing
+   the card just switches the CURRENT build's target from 5 down to 3 for
+   the rest of this build cycle. If 3+ distinct kinds are already on the
+   table, the burger completes immediately, same as before. */
+function playGrandmaShortcut() {
   const p = currentPlayer();
-  const selectedKinds = overrideKinds || (LOCAL_UI.modal && LOCAL_UI.modal.selectedKinds);
-  if (!selectedKinds || G.movesLeft <= 0) return;
-  if (new Set(selectedKinds).size !== 3) return;
-  const gcard = removeFromHand(p, c => c.type === 'action' && c.kind === 'grandma');
-  if (!gcard) return;
-  G.discardPile.push(gcard);
-  selectedKinds.forEach(kind => {
-    const card = removeFromHand(p, c => c.type === 'ingredient' && c.kind === kind);
-    if (card) G.discardPile.push(card);
-  });
-  const burgerCard = giveBurgerCard(p);
+  if (G.movesLeft <= 0) return;
+  const card = removeFromHand(p, c => c.type === 'action' && c.kind === 'grandma');
+  if (!card) return;
+  G.discardPile.push(card);
+  p.grandmaActive = true;
   G.movesLeft--;
-  addLog(t('madeGrandma', p.name));
-  triggerEffect('🍔✨', t('fxBurger'), p.id);
-  if (burgerCard && isMe(p.id)) showBurgerReveal(burgerCard.value);
+  addLog(t('playedGrandma', p.name));
+  triggerEffect('👵', null, p.id);
+  finishMoveMaybeCompleteBuild(p);
+}
+
+function openWildModal() {
+  const p = currentPlayer();
+  if (G.movesLeft <= 0 || !p.hand.some(c => c.type === 'action' && c.kind === 'wild')) return;
+  if (buildKindsHave(p).size >= buildTargetCount(p)) return;
+  LOCAL_UI.modal = { type: 'wildPick' };
+  renderLocal();
+}
+function playWild(kind) {
+  const p = currentPlayer();
+  if (G.movesLeft <= 0 || buildKindsHave(p).has(kind)) return;
+  const card = removeFromHand(p, c => c.type === 'action' && c.kind === 'wild');
+  if (!card) return;
+  G.discardPile.push(card);
+  p.building.push({ id: card.id, kind, isWild: true });
+  G.movesLeft--;
+  addLog(t('playedIngredient', p.name, `${t('wildLabel')} (${mName(ingMeta(kind))})`));
+  triggerEffect('🌟', null, p.id);
   LOCAL_UI.modal = null;
-  afterBurgerMade();
+  finishMoveMaybeCompleteBuild(p);
+}
+
+/* ---------------- Force Deal ---------------- */
+/* 3-step flow (give card → pick target → pick which of their table kinds
+   to take), same shape as Trade's target→offer flow. Unlike Trade this
+   can't be declined — the only recourse for the target is Say No, applied
+   once the actor confirms which kind they're taking (see applyReaction's
+   'forcedeal' case). */
+function openForceDealModal() {
+  const p = currentPlayer();
+  if (G.movesLeft <= 0 || !p.hand.some(c => c.type === 'action' && c.kind === 'forcedeal')) return;
+  if (!p.hand.some(c => c.type === 'ingredient')) return;
+  if (!otherPlayers().some(pl => pl.building.length > 0)) return;
+  LOCAL_UI.modal = { type: 'forceDealGive' };
+  renderLocal();
+}
+function pickForceDealGive(cardId) {
+  LOCAL_UI.modal = { type: 'forceDealTarget', giveCardId: cardId };
+  renderLocal();
+}
+function pickForceDealTarget(targetId) {
+  LOCAL_UI.modal = { type: 'forceDealTake', giveCardId: LOCAL_UI.modal.giveCardId, targetId };
+  renderLocal();
+}
+function confirmForceDeal(kind) {
+  const p = currentPlayer();
+  const m = LOCAL_UI.modal;
+  const card = removeFromHand(p, c => c.type === 'action' && c.kind === 'forcedeal');
+  if (!card) return;
+  G.discardPile.push(card);
+  G.movesLeft--;
+  const target = G.players.find(pl => pl.id === m.targetId);
+  const givenMeta = ingMeta((p.hand.find(c => c.id === m.giveCardId) || {}).kind);
+  addLog(t('playedForceDeal', p.name, target.name, givenMeta ? mName(givenMeta) : '?', mName(ingMeta(kind))));
+  triggerEffect('🤝', null, target.id);
+  LOCAL_UI.modal = null;
+  offerReaction('forcedeal', p.id, m.targetId, { giveCardId: m.giveCardId, takeKind: kind });
+}
+
+function finishMoveMaybeCompleteBuild(p) {
+  if (buildKindsHave(p).size >= buildTargetCount(p)) {
+    const built = p.building;
+    p.building = [];
+    p.grandmaActive = false;
+    built.forEach(b => G.discardPile.push({ id: b.id, type: 'ingredient', kind: b.kind }));
+    const burgerCard = giveBurgerCard(p);
+    addLog(t('madeBurger', p.name));
+    triggerEffect('🍔✨', t('fxBurger'), p.id);
+    if (burgerCard && isMe(p.id)) showBurgerReveal(burgerCard.value);
+    afterBurgerMade();
+    return;
+  }
+  render();
 }
 
 function afterBurgerMade() {
@@ -1292,21 +1539,15 @@ function playFoodTruck() {
   const card = removeFromHand(p, c => c.type === 'action' && c.kind === 'foodtruck');
   if (!card) return;
   G.discardPile.push(card);
-  ensureDrawPile(3);
-  const revealed = [];
-  for (let i = 0; i < 3 && G.drawPile.length > 0; i++) revealed.push(drawOne());
-  let kept = 0;
-  const keptIds = [];
-  revealed.forEach(c => {
-    if (c.type === 'ingredient') { p.hand.push(c); kept++; keptIds.push(c.id); }
-    else G.discardPile.push(c);
-  });
+  ensureDrawPile(2);
+  const taken = [];
+  for (let i = 0; i < 2 && G.drawPile.length > 0; i++) taken.push(drawOne());
+  taken.forEach(c => p.hand.push(c));
   G.movesLeft--;
-  addLog(t('playedFoodTruck', p.name, kept));
+  addLog(t('playedFoodTruck', p.name, taken.length));
   triggerEffect('🚚', t('fxTruck'), p.id);
-  markNewCards(keptIds);
+  markNewCards(taken.map(c => c.id));
   scheduleNewCardExpiry();
-  G.pendingReveal = { title: t('foodTruckRevealTitle'), cards: revealed };
   LOCAL_UI.modal = null;
   render();
 }
@@ -1347,7 +1588,10 @@ function openInspectorModal() {
 /* Consumes the Inspector card and spends the move right here, before the
    target's hand is even shown — viewing the hand is the payoff of playing
    the card, so canceling afterward must not refund it (previously the card
-   wasn't spent until confirmInspector, letting players peek for free). */
+   wasn't spent until confirmInspector, letting players peek for free).
+   The reveal itself now routes through offerReaction() so the target can
+   Say No to it — see applyReaction()'s 'inspector' case for what actually
+   happens once nobody cancels it. */
 function pickInspectorTarget(targetId) {
   const p = currentPlayer();
   const card = removeFromHand(p, c => c.type === 'action' && c.kind === 'inspector');
@@ -1357,8 +1601,8 @@ function pickInspectorTarget(targetId) {
   const target = G.players.find(pl => pl.id === targetId);
   addLog(t('playedInspector', p.name, target.name));
   triggerEffect('🕵️', t('fxInspect'), target.id);
-  LOCAL_UI.modal = { type: 'inspectorView', targetId, picked: [] };
-  render();
+  LOCAL_UI.modal = null;
+  offerReaction('inspector', p.id, targetId);
 }
 function toggleInspectorPick(cardId) {
   const m = LOCAL_UI.modal;
@@ -1383,30 +1627,29 @@ function confirmInspector() {
   render();
 }
 
-function playShoplifter() {
+function openShoplifterModal() {
+  if (G.movesLeft <= 0 || !currentPlayer().hand.some(c => c.type === 'action' && c.kind === 'shoplifter')) return;
+  if (!otherPlayers().some(pl => pl.building.length > 0)) return;
+  LOCAL_UI.modal = { type: 'shoplifterTarget' };
+  renderLocal();
+}
+/* Steals only the TOP (most recently placed) card off the chosen
+   opponent's build row — not a random pick from their whole hand like the
+   old version. Restricting to "top only" keeps it from being a precision
+   snipe of exactly the ingredient the thief needs. */
+function playShoplifter(targetId) {
   const p = currentPlayer();
-  if (G.movesLeft <= 0) return;
   const card = removeFromHand(p, c => c.type === 'action' && c.kind === 'shoplifter');
   if (!card) return;
   G.discardPile.push(card);
-  const stolenIds = [];
-  const victimNames = [];
-  otherPlayers().forEach(other => {
-    if (other.hand.length === 0) return;
-    const idx = Math.floor(Math.random() * other.hand.length);
-    const [stolen] = other.hand.splice(idx, 1);
-    p.hand.push(stolen);
-    stolenIds.push(stolen.id);
-    victimNames.push(other.name);
-  });
   G.movesLeft--;
-  addLog(victimNames.length > 0
-    ? t('playedShoplifter', p.name, victimNames.join(', '))
-    : t('playedShoplifterNone', p.name));
-  triggerEffect('🥷', t('fxSteal'), p.id);
-  markNewCards(stolenIds);
-  scheduleNewCardExpiry();
-  render();
+  const target = G.players.find(pl => pl.id === targetId);
+  const top = target.building[target.building.length - 1];
+  const ingName = top ? (top.isWild ? t('wildLabel') : mName(ingMeta(top.kind))) : '';
+  addLog(t('playedShoplifter', p.name, target.name, ingName));
+  triggerEffect('🥷', t('fxSteal'), target.id);
+  LOCAL_UI.modal = null;
+  offerReaction('shoplifter', p.id, targetId);
 }
 
 function openFlyModal() {
@@ -1421,14 +1664,12 @@ function playFly(targetId) {
   const card = removeFromHand(p, c => c.type === 'action' && c.kind === 'fly');
   if (!card) return;
   G.discardPile.push(card);
-  const target = G.players.find(pl => pl.id === targetId);
-  const slot = target.burgers.find(b => !b.fly);
-  if (slot) slot.fly = true;
   G.movesLeft--;
+  const target = G.players.find(pl => pl.id === targetId);
   addLog(t('playedFly', p.name, target.name));
   triggerEffect('🪰', t('fxFly'), target.id);
   LOCAL_UI.modal = null;
-  render();
+  offerReaction('fly', p.id, targetId);
 }
 
 function openSwatterModal() {
@@ -1464,17 +1705,16 @@ function playGust(targetId) {
   const card = removeFromHand(p, c => c.type === 'action' && c.kind === 'gust');
   if (!card) return;
   G.discardPile.push(card);
+  // Removing your OWN fly happens immediately — only placing it on the
+  // target is something they could Say No to.
   const slot = p.burgers.find(b => b.fly);
   if (slot) slot.fly = false;
-  const target = G.players.find(pl => pl.id === targetId);
-  const newSlot = target.burgers.find(b => !b.fly);
-  if (newSlot) newSlot.fly = true;
-  else target.burgers.push({ id: 'ghost' + Date.now(), value: 0, fly: true });
   G.movesLeft--;
+  const target = G.players.find(pl => pl.id === targetId);
   addLog(t('playedGust', p.name, target.name));
   triggerEffect('🌬️', t('fxGust'), target.id);
   LOCAL_UI.modal = null;
-  render();
+  offerReaction('gust', p.id, targetId);
 }
 
 /* Picking your own avatar is a real, shared, synced change (other players
@@ -1500,26 +1740,6 @@ function confirmAvatarPick() {
   target.avatar = emoji;
   LOCAL_UI.avatarModal = null;
   render();
-}
-
-function openMakeBurgerModal() {
-  const p = currentPlayer();
-  if (G.movesLeft <= 0) return;
-  LOCAL_UI.modal = { type: 'makeBurger', selectedKinds: [] };
-  renderLocal();
-}
-function openGrandmaModal() {
-  const p = currentPlayer();
-  if (G.movesLeft <= 0 || !hasGrandmaCard(p) || distinctIngredientKinds(p).length < 3) return;
-  LOCAL_UI.modal = { type: 'makeBurger', selectedKinds: [], direct: 'grandma' };
-  renderLocal();
-}
-function toggleGrandmaKind(kind) {
-  const m = LOCAL_UI.modal;
-  const idx = m.selectedKinds.indexOf(kind);
-  if (idx >= 0) m.selectedKinds.splice(idx, 1);
-  else if (m.selectedKinds.length < 3) m.selectedKinds.push(kind);
-  renderLocal();
 }
 
 /* Cancel/close only — mutating actions (delivery, inspector, fly, gust,
@@ -1557,12 +1777,20 @@ function botDoOneMove(bot) {
   const diff = bot.difficulty || 'medium';
   const chance = (easy, medium, hard) => ({ easy, medium, hard }[diff] ?? medium);
 
-  if (canMakeClassic(bot)) { doMakeClassic(); return true; }
+  // Playing a needed ingredient onto the table is always the top priority —
+  // it's free, guaranteed progress with no downside.
+  const neededCard = bot.hand.find(c => c.type === 'ingredient' && !buildKindsHave(bot).has(c.kind));
+  if (neededCard) { playIngredientToBuild(neededCard.id); return true; }
 
-  if (hasGrandmaCard(bot) && distinctIngredientKinds(bot).length >= 3) {
-    if (Math.random() < chance(0.3, 0.65, 0.9)) {
-      doMakeGrandma(distinctIngredientKinds(bot).slice(0, 3));
-      return true;
+  if (hasGrandmaCard(bot) && !bot.grandmaActive) {
+    const willFinishNow = buildKindsHave(bot).size >= 3;
+    if (willFinishNow || Math.random() < chance(0.3, 0.6, 0.85)) { playGrandmaShortcut(); return true; }
+  }
+
+  if (bot.hand.some(c => c.type === 'action' && c.kind === 'wild') && buildKindsHave(bot).size < buildTargetCount(bot)) {
+    if (Math.random() < chance(0.4, 0.7, 0.9)) {
+      const missing = INGREDIENTS.map(i => i.kind).filter(k => !buildKindsHave(bot).has(k));
+      if (missing.length) { playWild(missing[0]); return true; }
     }
   }
 
@@ -1587,7 +1815,28 @@ function botDoOneMove(bot) {
   }
 
   if (bot.hand.some(c => c.type === 'action' && c.kind === 'shoplifter')) {
-    if (Math.random() < chance(0.35, 0.6, 0.85)) { playShoplifter(); return true; }
+    const target = botPickBuildTarget(bot);
+    if (target && Math.random() < chance(0.35, 0.6, 0.85)) { playShoplifter(target.id); return true; }
+  }
+
+  if (bot.hand.some(c => c.type === 'action' && c.kind === 'forcedeal') && bot.hand.some(c => c.type === 'ingredient')) {
+    const target = botPickBuildTarget(bot);
+    if (target && Math.random() < chance(0.3, 0.55, 0.8)) {
+      const myKinds = buildKindsHave(bot);
+      const takeKind = [...new Set(target.building.map(b => b.kind))].find(k => !myKinds.has(k));
+      const giveCard = bot.hand.find(c => c.type === 'ingredient' && c.kind !== takeKind);
+      if (takeKind && giveCard) {
+        const card = removeFromHand(bot, c => c.type === 'action' && c.kind === 'forcedeal');
+        if (card) {
+          G.discardPile.push(card);
+          G.movesLeft--;
+          addLog(t('playedForceDeal', bot.name, target.name, mName(ingMeta(giveCard.kind)), mName(ingMeta(takeKind))));
+          triggerEffect('🤝', null, target.id);
+          offerReaction('forcedeal', bot.id, target.id, { giveCardId: giveCard.id, takeKind });
+          return true;
+        }
+      }
+    }
   }
 
   if (bot.hand.some(c => c.type === 'action' && c.kind === 'inspector')) {
@@ -1609,7 +1858,7 @@ function botDoOneMove(bot) {
 }
 
 function botPickNeededIngredientKind(bot) {
-  const have = new Set(bot.hand.filter(c => c.type === 'ingredient').map(c => c.kind));
+  const have = buildKindsHave(bot);
   const missing = INGREDIENTS.map(i => i.kind).filter(k => !have.has(k));
   if (!missing.length) return null;
   return missing[Math.floor(Math.random() * missing.length)];
@@ -1619,6 +1868,15 @@ function botPickRichestTarget(bot) {
   const candidates = otherPlayers().filter(pl => pl.hand.length > 0);
   if (!candidates.length) return null;
   candidates.sort((a, b) => b.hand.length - a.hand.length);
+  return candidates[0];
+}
+
+/* Prefers whoever's closest to finishing their burger — that's the most
+   disruptive target for both Shoplifter and Force Deal. */
+function botPickBuildTarget(bot) {
+  const candidates = otherPlayers().filter(pl => pl.building.length > 0);
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => b.building.length - a.building.length);
   return candidates[0];
 }
 
@@ -1633,30 +1891,20 @@ function botPickLeaderTarget(bot) {
   return candidates[0];
 }
 
-/* Standalone Health Inspector effect for bots — doesn't rely on modal state
-   like confirmInspector() does, since bots never open modals. */
+/* Bots don't open the inspectorTarget/inspectorView modals a human would —
+   this plays the card and announces it the same way, then routes the
+   actual reveal-and-take through offerReaction() same as the human path,
+   so a human target still gets a chance to Say No. The picking-which-2-
+   cards logic itself now lives in applyReaction()'s 'inspector' case
+   (shared for any bot actor, not just this one). */
 function botPlayInspector(bot, target) {
   const card = removeFromHand(bot, c => c.type === 'action' && c.kind === 'inspector');
   if (!card) return;
   G.discardPile.push(card);
-  const have = new Set(bot.hand.filter(c => c.type === 'ingredient').map(c => c.kind));
-  const sorted = target.hand.slice().sort((a, b) => {
-    const aScore = a.type === 'ingredient' && !have.has(a.kind) ? 1 : 0;
-    const bScore = b.type === 'ingredient' && !have.has(b.kind) ? 1 : 0;
-    return bScore - aScore;
-  });
-  const taken = [];
-  for (let i = 0; i < 2 && sorted.length; i++) {
-    const c = sorted.shift();
-    removeFromHand(target, cc => cc.id === c.id);
-    bot.hand.push(c);
-    taken.push(c);
-  }
   G.movesLeft--;
   addLog(t('playedInspector', bot.name, target.name));
   triggerEffect('🕵️', t('fxInspect'), target.id);
-  markNewCards(taken.map(c => c.id));
-  scheduleNewCardExpiry();
+  offerReaction('inspector', bot.id, target.id);
 }
 
 /* Bots never propose a trade to the human (would need extra UI to let the
@@ -1865,6 +2113,11 @@ function doLocalRender() {
     if (G.online) { renderOnlineTradeRespond(); return; }
     renderTradeRespond(); return;
   }
+  if (G.phase === 'sayNoRespond') {
+    if (G.vsBots) { resolveSayNoRespondAutomatically(); return; }
+    if (G.online) { renderOnlineSayNoRespond(); return; }
+    renderSayNoRespond(); return;
+  }
   if (G.online) { renderOnlineGame(); return; }
   renderGame();
 }
@@ -1889,13 +2142,34 @@ function resolvePassAutomatically() {
     render();
     return;
   }
+  if (purpose === 'sayNoRespond') {
+    G.phase = 'sayNoRespond';
+    render();
+    return;
+  }
+  if (purpose === 'applyReaction') {
+    applyReaction();
+    return;
+  }
   if (purpose === 'tradeBack' || purpose === 'backToGame') {
     G.phase = 'game';
     scheduleNewCardExpiry();
+    resumeBotIfNeeded();
     render();
     return;
   }
   render();
+}
+
+function resolveSayNoRespondAutomatically() {
+  const r = G.reaction;
+  const target = G.players.find(p => p.id === r.targetId);
+  if (target.isBot) {
+    setTimeout(() => respondSayNo(botDecideSayNo()), 600);
+    renderBotThinking(target, t('botConsideringSayNo', escapeHtml(target.name)));
+    return;
+  }
+  renderSayNoRespond();
 }
 
 function resolveTradeRespondAutomatically() {
@@ -2202,6 +2476,38 @@ function findCardAnywhereForDisplay(cardId, ownerGuess) {
   return ownerGuess.hand.find(c => c.id === cardId) || { id: cardId, type: 'ingredient', kind: 'bun' };
 }
 
+function reactionCardName(kind) {
+  const meta = actMeta(kind);
+  return meta ? mName(meta) : kind;
+}
+
+function renderSayNoRespond() {
+  const r = G.reaction;
+  const actor = G.players.find(p => p.id === r.actorId);
+  const target = G.players.find(p => p.id === r.targetId);
+  app.innerHTML = `
+    ${menuButtonHtml()}
+    <div class="screen">
+      <h2>${escapeHtml(t('sayNoPromptTitle', actor.name, reactionCardName(r.kind)))}</h2>
+      <div class="subtitle">${t('sayNoPromptBody')}</div>
+      <div class="hand">${renderCard({ id: 'sayno-preview', type: 'action', kind: 'sayno' }, false)}</div>
+      <button class="btn-gold btn-block" onclick="respondSayNo(true)">${t('sayNoConfirm')}</button>
+      <button class="btn-secondary btn-block" onclick="respondSayNo(false)">${t('sayNoDecline')}</button>
+    </div>
+    ${renderMainMenuModal()}
+    ${renderRulesModal()}
+  `;
+}
+
+/* Online: only the actual reaction target's device shows the respond
+   screen — everyone else just waits, same pattern as trade. */
+function renderOnlineSayNoRespond() {
+  const r = G.reaction;
+  if (ONLINE.myId === r.targetId) { renderSayNoRespond(); return; }
+  const target = G.players.find(p => p.id === r.targetId);
+  renderOnlineWaiting(t('waitingForSayNoResponse', escapeHtml(target.name)));
+}
+
 /* Online: only the actual trade target's device shows the respond screen
    (it already reveals their hand + the offer) — everyone else just waits. */
 function renderOnlineTradeRespond() {
@@ -2289,7 +2595,6 @@ function renderGame() {
       ${renderTable(active)}
 
       <div class="actions-row">
-        <button class="btn-gold" ${isMyTurn && G.movesLeft > 0 ? '' : 'disabled'} onclick="openMakeBurgerModal()">${t('makeBurgerBtn')}</button>
         <button class="btn-secondary" ${isMyTurn && G.movesLeft > 0 ? '' : 'disabled'} onclick="openTradeModal()">${t('tradeBtn')}</button>
         <button class="btn-danger" ${isMyTurn ? '' : 'disabled'} onclick="endTurn()">${t('endTurnBtn')}</button>
       </div>
@@ -2336,7 +2641,6 @@ function renderOnlineGame() {
 
 
       <div class="actions-row">
-        <button class="btn-gold" ${isMyTurn && G.movesLeft > 0 ? '' : 'disabled'} onclick="openMakeBurgerModal()">${t('makeBurgerBtn')}</button>
         <button class="btn-secondary" ${isMyTurn && G.movesLeft > 0 ? '' : 'disabled'} onclick="openTradeModal()">${t('tradeBtn')}</button>
         <button class="btn-danger" ${isMyTurn ? '' : 'disabled'} onclick="endTurn()">${t('endTurnBtn')}</button>
       </div>
@@ -2434,7 +2738,12 @@ function renderStackCard(group, p, forceDisabled) {
 /* Shared usability/handler/reason logic for an action card kind — used by both
    the single fan card and the grouped stack (any card of that kind behaves the same). */
 function cardUsability(c, p) {
-  if (c.type === 'ingredient') return { usable: true, handler: null, reason: null };
+  if (c.type === 'ingredient') {
+    let usable = true, reason = null;
+    if (G.movesLeft <= 0) { usable = false; reason = t('reasonNoMoves'); }
+    else if (buildKindsHave(p).has(c.kind)) { usable = false; reason = t('reasonAlreadyBuilt'); }
+    return { usable, handler: usable ? `playIngredientToBuild('${c.id}')` : null, reason };
+  }
   let handler = null;
   let usable = true;
   let reason = null;
@@ -2443,14 +2752,17 @@ function cardUsability(c, p) {
     case 'foodtruck': handler = 'playFoodTruck()'; break;
     case 'delivery': handler = 'openDeliveryModal()'; break;
     case 'grandma':
-      handler = 'openGrandmaModal()';
-      if (usable && distinctIngredientKinds(p).length < 3) { usable = false; reason = t('reasonGrandmaIngredients'); }
+      handler = 'playGrandmaShortcut()';
+      if (usable && p.grandmaActive) { usable = false; reason = t('reasonGrandmaAlready'); }
       break;
     case 'inspector':
       handler = 'openInspectorModal()';
       if (usable && !otherPlayers().some(pl => pl.hand.length > 0)) { usable = false; reason = t('reasonInspectorNoTargets'); }
       break;
-    case 'shoplifter': handler = 'playShoplifter()'; break;
+    case 'shoplifter':
+      handler = 'openShoplifterModal()';
+      if (usable && !otherPlayers().some(pl => pl.building.length > 0)) { usable = false; reason = t('reasonShoplifterNoTargets'); }
+      break;
     case 'fly':
       handler = 'openFlyModal()';
       if (usable && !otherPlayers().some(pl => pl.burgers.length > 0)) { usable = false; reason = t('reasonFlyNoTargets'); }
@@ -2462,6 +2774,19 @@ function cardUsability(c, p) {
     case 'gust':
       handler = 'openGustModal()';
       if (usable && !p.burgers.some(b => b.fly)) { usable = false; reason = t('reasonNoFlyOnYours'); }
+      break;
+    case 'wild':
+      handler = 'openWildModal()';
+      if (usable && buildKindsHave(p).size >= buildTargetCount(p)) { usable = false; reason = t('reasonAlreadyBuilt'); }
+      break;
+    case 'forcedeal':
+      handler = 'openForceDealModal()';
+      if (usable && !p.hand.some(cc => cc.type === 'ingredient')) { usable = false; reason = t('reasonForceDealNoGive'); }
+      else if (usable && !otherPlayers().some(pl => pl.building.length > 0)) { usable = false; reason = t('reasonShoplifterNoTargets'); }
+      break;
+    case 'sayno':
+      // Never directly playable from hand — only offered as a reaction prompt.
+      usable = false; reason = t('reasonSayNoReactive');
       break;
   }
   return { usable, handler, reason };
@@ -2755,9 +3080,26 @@ function renderSeat(pl, isActive, x, y, i, isViewerSeat) {
               ${b.fly ? '<span class="burger-slot-fly">🪰</span>' : ''}
             </div>`).join('')}
         </div>
+        ${renderBuildRow(pl)}
       </div>
     </div>
   `;
+}
+
+/* The in-progress build is deliberately public (everyone's table, not just
+   "mine") — that's the whole point of building on the table instead of in
+   hand: opponents can see what you're one ingredient away from finishing
+   and target it (Shoplifter steals the top/most-recent card here, Force
+   Deal can take any specific kind from here). */
+function renderBuildRow(pl) {
+  if (!pl.building.length) return '';
+  const target = buildTargetCount(pl);
+  const chips = pl.building.map((b, i) => {
+    const meta = ingMeta(b.kind);
+    const isTop = i === pl.building.length - 1;
+    return `<div class="build-chip ${b.isWild ? 'wild' : ''} ${isTop ? 'top' : ''}" title="${escapeHtml(mName(meta))}${b.isWild ? ' (' + t('wildLabel') + ')' : ''}">${meta.ic}</div>`;
+  }).join('');
+  return `<div class="build-row">${chips}<div class="build-count">${pl.building.length}/${target}</div></div>`;
 }
 
 function renderPendingReveal() {
@@ -2810,47 +3152,6 @@ function renderModal() {
   const m = LOCAL_UI.modal;
   if (!m) return '';
   const p = currentPlayer();
-
-  if (m.type === 'makeBurger') {
-    const canClassic = canMakeClassic(p);
-    const hasG = hasGrandmaCard(p);
-    const kinds = distinctIngredientKinds(p);
-
-    const grandmaSection = `
-      <div>
-        <div class="hint" style="margin-bottom:6px;color:#d9c4a3;font-size:13px;">${t('grandmaHint')}</div>
-        <div class="hand">
-          ${kinds.map(k => renderCard({ id: 'gk-' + k, type: 'ingredient', kind: k }, true, `toggleGrandmaKind('${k}')`, m.selectedKinds.includes(k))).join('')}
-        </div>
-        <button class="btn-gold btn-block" ${m.selectedKinds.length === 3 ? '' : 'disabled'} onclick="doMakeGrandma()">
-          ${t('grandmaConfirm', m.selectedKinds.length)}
-        </button>
-      </div>
-    `;
-
-    if (m.direct === 'grandma') {
-      return wrapModal(t('grandmaModalTitle'), grandmaSection, true);
-    }
-
-    const classicSection = `
-      <div>
-        <div class="hint" style="margin-bottom:6px;color:#d9c4a3;font-size:13px;">${t('classicOption', canClassic, missingClassicIngredients(p).map(i => mName(i)).join(', '))}</div>
-        <div class="hand">
-          ${INGREDIENTS.map(ing => renderCard({ id: 'preview-' + ing.kind, type: 'ingredient', kind: ing.kind }, true, null)).join('')}
-        </div>
-        <button class="btn-gold btn-block" ${canClassic ? '' : 'disabled'} onclick="doMakeClassic(); closeModal();">
-          ${t('makeClassicBtn')}
-        </button>
-      </div>
-    `;
-
-    return wrapModal(t('makeBurgerModalTitle'), `
-      <div class="choice-list">
-        ${classicSection}
-        ${hasG ? grandmaSection : ''}
-      </div>
-    `, true);
-  }
 
   if (m.type === 'tradeTarget') {
     return wrapModal(t('tradeTargetTitle'), `
@@ -2917,6 +3218,54 @@ function renderModal() {
     return wrapModal(t('gustTargetTitle'), `
       <div class="choice-list">
         ${otherPlayers().map(pl => `<button class="choice-btn" onclick="playGust(${pl.id})">${escapeHtml(pl.name)}</button>`).join('')}
+      </div>
+    `, true);
+  }
+
+  if (m.type === 'shoplifterTarget') {
+    const eligible = otherPlayers().filter(pl => pl.building.length > 0);
+    return wrapModal(t('shoplifterTargetTitle'), `
+      <div class="choice-list">
+        ${eligible.map(pl => `<button class="choice-btn" onclick="playShoplifter(${pl.id})">${t('playerBuildCount', escapeHtml(pl.name), pl.building.length)}</button>`).join('')}
+      </div>
+    `, true);
+  }
+
+  if (m.type === 'wildPick') {
+    const have = buildKindsHave(p);
+    return wrapModal(t('wildPickTitle'), `
+      <div class="choice-list">
+        ${INGREDIENTS.filter(i => !have.has(i.kind)).map(i => `<button class="choice-btn" onclick="playWild('${i.kind}')">${i.ic} ${mName(i)}</button>`).join('')}
+      </div>
+    `, true);
+  }
+
+  if (m.type === 'forceDealGive') {
+    return wrapModal(t('forceDealGiveTitle'), `
+      <div class="hand">
+        ${p.hand.filter(c => c.type === 'ingredient').map(c => renderCard(c, true, `pickForceDealGive('${c.id}')`)).join('')}
+      </div>
+    `, true);
+  }
+
+  if (m.type === 'forceDealTarget') {
+    const eligible = otherPlayers().filter(pl => pl.building.length > 0);
+    return wrapModal(t('forceDealTargetTitle'), `
+      <div class="choice-list">
+        ${eligible.map(pl => `<button class="choice-btn" onclick="pickForceDealTarget(${pl.id})">${t('playerBuildCount', escapeHtml(pl.name), pl.building.length)}</button>`).join('')}
+      </div>
+    `, true);
+  }
+
+  if (m.type === 'forceDealTake') {
+    const target = G.players.find(pl => pl.id === m.targetId);
+    const myKinds = buildKindsHave(p);
+    const takeable = [...new Set(target.building.map(b => b.kind))].filter(k => !myKinds.has(k));
+    return wrapModal(t('forceDealTakeTitle', escapeHtml(target.name)), `
+      <div class="choice-list">
+        ${takeable.length
+          ? takeable.map(k => `<button class="choice-btn" onclick="confirmForceDeal('${k}')">${ingMeta(k).ic} ${mName(ingMeta(k))}</button>`).join('')
+          : `<div class="subtitle">${t('reasonAlreadyBuilt')}</div>`}
       </div>
     `, true);
   }
