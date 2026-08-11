@@ -21,6 +21,15 @@ const INGREDIENTS = [
   { kind: 'tomato',  ic: '🩹', name: { uk: 'Аптечка',  en: 'Medkit' } },
 ];
 
+/* Completing a shelter pile isn't just "1 of each of the 5 kinds" — Rope
+   and Medkit each need 2 copies (survival gear you'd realistically want a
+   spare of), making 2 of the 5 requirements meaningfully harder than the
+   other 3. Total cards per pile: 1+1+1+2+2 = 7 (up from 5 — see
+   WIN_THRESHOLD, tuned down accordingly). Grandma's Recipe bypasses this
+   entirely (any 3 distinct kinds, 1 each), which is now an even bigger
+   shortcut than before. */
+const PILE_REQUIREMENTS = { bun: 1, patty: 1, cheese: 1, lettuce: 2, tomato: 2 };
+
 const ACTIONS = [
   { kind: 'foodtruck',  ic: '🪂',
     name: { uk: 'Скидання з повітря', en: 'Airdrop' },
@@ -30,7 +39,7 @@ const ACTIONS = [
     desc: { uk: 'Оголоси ресурс — всі інші гравці віддають тобі всі такі карти.', en: 'Call a resource — all other players give you every card of that kind.' } },
   { kind: 'grandma',    ic: '🎒',
     name: { uk: 'Дідусеві навички', en: "Grandpa's Survival Skills" },
-    desc: { uk: 'Добудуй прихисток лише з 3 різних ресурсів замість 5.', en: 'Finish a shelter with only 3 different resources instead of 5.' } },
+    desc: { uk: 'Добудуй прихисток лише з 3 різних ресурсів (по 1) замість повного набору.', en: 'Finish a shelter with just 3 different resources (1 each) instead of the full set.' } },
   { kind: 'inspector',  ic: '🌲',
     name: { uk: 'Лісник', en: 'Ranger' },
     desc: { uk: 'Подивись руку одного гравця і візьми собі 2 карти.', en: "Look through one player's hand and take 2 cards for yourself." } },
@@ -66,7 +75,7 @@ const ACTION_COUNTS = { foodtruck: 4, delivery: 4, grandma: 3, inspector: 4, sho
 const INGREDIENT_COUNT_PER_KIND = 12;
 const BURGER_PILE_SINGLES = 10; // value-1 cards
 const BURGER_PILE_DOUBLES = 8;  // value-2 cards
-const WIN_THRESHOLD = 4;
+const WIN_THRESHOLD = 3; // lowered from 4 — piles now need 7 cards (was 5) since Rope/Medkit require 2 copies each
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 6;
 
@@ -444,7 +453,6 @@ const STRINGS = {
     pileDepleted: 'Прихистки закінчились!',
     reasonNoMoves: 'Не залишилось ходів у цьому ході',
     reasonGrandmaAlready: 'Дідусеві навички вже діють для поточного прихистку',
-    reasonAlreadyBuilt: 'Цей ресурс вже викладено на стіл',
     reasonInspectorNoTargets: 'У жодного суперника немає карт на руках',
     reasonShoplifterNoTargets: 'У жодного суперника немає ресурсів на столі',
     reasonForceDealNoGive: 'У тебе немає ресурсів для обміну',
@@ -613,7 +621,6 @@ const STRINGS = {
     pileDepleted: 'The shelter pile ran out!',
     reasonNoMoves: 'No moves left this turn',
     reasonGrandmaAlready: "Grandpa's Survival Skills are already active for this shelter",
-    reasonAlreadyBuilt: 'That resource is already on the table',
     reasonInspectorNoTargets: 'No opponent has any cards in hand',
     reasonShoplifterNoTargets: 'No opponent has anything on their table',
     reasonForceDealNoGive: 'You have no resources to trade away',
@@ -684,6 +691,12 @@ function rulesHtml() {
       </ul>
       ${cardGallery}
 
+      <h4>Що потрібно для прихистку</h4>
+      <p>Прихисток — це не просто "5 різних карток". Потрібен конкретний набір:
+      по <b>1</b> Деревині, Воді та Іскрі — і по <b>2</b> Мотузки та Аптечки (разом
+      <b>7 карток</b>). Мотузка й Аптечка — дефіцитні, тож саме на них варто
+      орієнтуватись заздалегідь.</p>
+
       <h4>Підготовка</h4>
       <ol>
         <li>Перетасуйте 18 карт прихистків окремо — це стос прихистків, кладіть його сорочкою догори в центр столу.</li>
@@ -699,7 +712,7 @@ function rulesHtml() {
         <li>Робить <b>до 3 ходів</b> у будь-якому порядку й комбінації:</li>
       </ol>
       <ul>
-        <li><b>Викласти ресурс на стіл</b> — кожна картка ресурсу з руки, викладена на свій стіл, це окремий хід. Коли на столі зібрано всі 5 різних видів (або 3, якщо зіграно Дідусеві навички) — прихисток одразу завершується цим же ходом: карти скидаються, гравець бере верхню картку зі стосу прихистків.</li>
+        <li><b>Викласти ресурс на стіл</b> — кожна картка ресурсу з руки, викладена на свій стіл, це окремий хід. Коли на столі зібрано повний набір (1 Деревина + 1 Вода + 1 Іскра + 2 Мотузки + 2 Аптечки — або 3 будь-яких різних, якщо зіграно Дідусеві навички) — прихисток одразу завершується цим же ходом: карти скидаються, гравець бере верхню картку зі стосу прихистків. Можна вести кілька прихистків одночасно — зайва картка виду, якого вже досить, просто починає новий.</li>
         <li><b>Обмін</b> — запропонувати одному гравцю обмін картами (1 на 1): віддай одну свою карту й вкажи, що хочеш отримати натомість (конкретний ресурс, будь-яку карту дії або без різниці). Гравець може погодитись, давши відповідну карту, або відмовитись; відмова не рахується як витрачений хід.</li>
         <li><b>Зіграти карту дії</b> — розіграти одну з карт дій (описи нижче). Кожна зіграна карта дії — окремий хід.</li>
       </ul>
@@ -745,6 +758,12 @@ function rulesHtml() {
     </ul>
     ${cardGallery}
 
+    <h4>What a shelter needs</h4>
+    <p>A shelter isn't just "5 different cards" — it needs a specific set:
+    <b>1</b> each of Wood, Water, and Spark — plus <b>2</b> each of Rope and
+    Medkit (<b>7 cards</b> total). Rope and Medkit are the scarce ones, so
+    plan around them early.</p>
+
     <h4>Setup</h4>
     <ol>
       <li>Shuffle the 18 shelter cards separately — this is the shelter pile, place it face-down in the middle of the table.</li>
@@ -760,7 +779,7 @@ function rulesHtml() {
       <li>Makes <b>up to 3 moves</b> in any order or combination:</li>
     </ol>
     <ul>
-      <li><b>Play a resource onto the table</b> — each resource card played from your hand onto your own table is a separate move. Once all 5 different kinds are on the table (or 3, if Grandpa's Survival Skills was played), the shelter completes immediately as part of that same move: the cards are discarded and you take the top card of the shelter pile.</li>
+      <li><b>Play a resource onto the table</b> — each resource card played from your hand onto your own table is a separate move. Once the full set is on the table (1 Wood + 1 Water + 1 Spark + 2 Rope + 2 Medkit — or any 3 different kinds if Grandpa's Survival Skills was played), the shelter completes immediately as part of that same move: the cards are discarded and you take the top card of the shelter pile. You can have several shelters going at once — an extra card of a kind you already have enough of just starts a new one.</li>
       <li><b>Trade</b> — offer another player a 1-for-1 card trade: give up one of your cards and say what you want back (a specific resource, any action card, or no preference). They can accept by handing over a matching card, or decline; a decline doesn't cost you the move.</li>
       <li><b>Play an action card</b> — play one of the action cards (described below). Each action card played is a separate move.</li>
     </ul>
@@ -1306,14 +1325,24 @@ function resumeBotIfNeeded() {
    Shoplifter can find the single most-recently-placed card across every
    pile a player has, regardless of which pile it landed in. */
 function pileKindsHave(pile) { return new Set(pile.cards.map(c => c.kind)); }
-function pileTargetCount(pile) { return pile.grandmaActive ? 3 : 5; }
+function pileKindCount(pile, kind) { return pile.cards.filter(c => c.kind === kind).length; }
+/* How many of this kind a pile still wants — 1 for every kind once
+   Grandma's shortcut is active on it (just needs 3 distinct kinds total),
+   otherwise whatever PILE_REQUIREMENTS says (1 for most, 2 for Rope/Medkit). */
+function pileRequiredCount(pile, kind) { return pile.grandmaActive ? 1 : (PILE_REQUIREMENTS[kind] || 1); }
+function pileTargetCount(pile) { return pile.grandmaActive ? 3 : Object.values(PILE_REQUIREMENTS).reduce((s, n) => s + n, 0); }
+function pileIsComplete(pile) {
+  if (pile.grandmaActive) return pileKindsHave(pile).size >= 3;
+  return INGREDIENTS.every(i => pileKindCount(pile, i.kind) >= PILE_REQUIREMENTS[i.kind]);
+}
 function hasGrandmaCard(p) { return p.hand.some(c => c.type === 'action' && c.kind === 'grandma'); }
 
-/* Finds (or opens) a pile that doesn't already have this kind — so playing
-   a duplicate of something you're already building starts a second burger
-   instead of being blocked. */
+/* Finds (or opens) a pile that still wants more of this kind — so playing
+   a duplicate of something a pile has already fully satisfied starts a
+   second burger instead of being wasted, while a pile that still needs a
+   2nd Rope/Medkit keeps collecting into itself. */
 function addToBuild(p, kind, cardId, isWild) {
-  let pile = p.builds.find(b => !pileKindsHave(b).has(kind));
+  let pile = p.builds.find(b => pileKindCount(b, kind) < pileRequiredCount(b, kind));
   if (!pile) { pile = { cards: [], grandmaActive: false }; p.builds.push(pile); }
   G.buildSeq = (G.buildSeq || 0) + 1;
   pile.cards.push({ id: cardId, kind, isWild, seq: G.buildSeq });
@@ -1462,7 +1491,7 @@ function confirmForceDeal(kind) {
 }
 
 function finishMoveMaybeCompletePile(p, pile) {
-  if (pileKindsHave(pile).size >= pileTargetCount(pile)) {
+  if (pileIsComplete(pile)) {
     p.builds = p.builds.filter(b => b !== pile);
     pile.cards.forEach(b => G.discardPile.push({ id: b.id, type: 'ingredient', kind: b.kind }));
     const burgerCard = giveBurgerCard(p);
