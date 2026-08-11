@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 178.6 249.4">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="178.6" y2="249.4" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8d9c6c"/>
+      <stop offset="1" stop-color="#4f5c33"/>
+    </linearGradient>
+  </defs>
+  <rect width="178.6" height="249.4" rx="14" fill="url(#g)"/>
+  <rect x="6" y="6" width="166.6" height="237.4" rx="10" fill="none" stroke="#fff" stroke-opacity="0.35" stroke-width="2"/>
+  <text x="89.3" y="112" font-size="62" text-anchor="middle" dominant-baseline="middle">🎒</text>
+  <text x="89.3" y="180" font-size="13" font-weight="700" text-anchor="middle" fill="#f3f6ea" font-family="Arial, sans-serif">GRANDPA'S</text>
+  <text x="89.3" y="197" font-size="13" font-weight="700" text-anchor="middle" fill="#f3f6ea" font-family="Arial, sans-serif">SKILLS</text>
+  <text x="89.3" y="216" font-size="10" text-anchor="middle" fill="#f3f6ea" font-family="Arial, sans-serif">Shelter with 3</text>
+</svg>

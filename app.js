@@ -1,55 +1,64 @@
 /* ===========================================================
-   Cheeseburger: The Game / Чізбургер: Гра
+   Wild Survival: The Game / Дика Природа: Виживання
    hotseat digital card game (adapted from
    "Nasi Lemak: The Game" by Faculty of Fun, re-themed)
+
+   Theme note: internal identifiers (variable/function names, CSS class
+   names like .burger-slot, translation keys like fxBurger/pileBurgers)
+   still use the original "ingredient/burger" vocabulary from the game's
+   first (cheeseburger) skin — they're invisible plumbing, never shown to
+   a player. Only the actual displayed text below (INGREDIENTS/ACTIONS
+   names+descriptions, STRINGS values, rules text) reflects the current
+   theme. If you reskin again, that's the split to follow: reuse the
+   engine as-is, just swap what these arrays and STRINGS say.
    =========================================================== */
 
 const INGREDIENTS = [
-  { kind: 'bun',     ic: '🍞', name: { uk: 'Булочка', en: 'Bun' } },
-  { kind: 'patty',   ic: '🥩', name: { uk: 'Котлета', en: 'Patty' } },
-  { kind: 'cheese',  ic: '🧀', name: { uk: 'Сир',     en: 'Cheese' } },
-  { kind: 'lettuce', ic: '🥬', name: { uk: 'Салат',   en: 'Lettuce' } },
-  { kind: 'tomato',  ic: '🍅', name: { uk: 'Помідор', en: 'Tomato' } },
+  { kind: 'bun',     ic: '🪵', name: { uk: 'Деревина', en: 'Wood' } },
+  { kind: 'patty',   ic: '💧', name: { uk: 'Вода',     en: 'Water' } },
+  { kind: 'cheese',  ic: '🔥', name: { uk: 'Іскра',    en: 'Spark' } },
+  { kind: 'lettuce', ic: '🪢', name: { uk: 'Мотузка',  en: 'Rope' } },
+  { kind: 'tomato',  ic: '🩹', name: { uk: 'Аптечка',  en: 'Medkit' } },
 ];
 
 const ACTIONS = [
-  { kind: 'foodtruck',  ic: '🚚',
-    name: { uk: 'Фудтрак', en: 'Food Truck' },
+  { kind: 'foodtruck',  ic: '🪂',
+    name: { uk: 'Скидання з повітря', en: 'Airdrop' },
     desc: { uk: 'Візьми 2 верхні карти колоди собі в руку (будь-які).', en: 'Take the top 2 cards of the draw pile into your hand (any kind).' } },
-  { kind: 'delivery',   ic: '📦',
-    name: { uk: "Кур'єр", en: 'Delivery Guy' },
-    desc: { uk: 'Оголоси інгредієнт — всі інші гравці віддають тобі всі такі карти.', en: 'Call an ingredient — all other players give you every card of that kind.' } },
-  { kind: 'grandma',    ic: '👵',
-    name: { uk: 'Бабусин рецепт', en: "Grandma's Recipe" },
-    desc: { uk: 'Приготуй чізбургер лише з 3 різних інгредієнтів замість 5.', en: 'Make a cheeseburger with only 3 different ingredients instead of 5.' } },
-  { kind: 'inspector',  ic: '🕵️',
-    name: { uk: 'Санінспектор', en: 'Health Inspector' },
+  { kind: 'delivery',   ic: '📻',
+    name: { uk: 'Сигнал SOS', en: 'SOS Signal' },
+    desc: { uk: 'Оголоси ресурс — всі інші гравці віддають тобі всі такі карти.', en: 'Call a resource — all other players give you every card of that kind.' } },
+  { kind: 'grandma',    ic: '🎒',
+    name: { uk: 'Дідусеві навички', en: "Grandpa's Survival Skills" },
+    desc: { uk: 'Добудуй прихисток лише з 3 різних ресурсів замість 5.', en: 'Finish a shelter with only 3 different resources instead of 5.' } },
+  { kind: 'inspector',  ic: '🌲',
+    name: { uk: 'Лісник', en: 'Ranger' },
     desc: { uk: 'Подивись руку одного гравця і візьми собі 2 карти.', en: "Look through one player's hand and take 2 cards for yourself." } },
-  { kind: 'shoplifter', ic: '🥷',
-    name: { uk: 'Крадій', en: 'Shoplifter' },
+  { kind: 'shoplifter', ic: '🐦‍⬛',
+    name: { uk: 'Ворон-злодій', en: 'Thieving Raven' },
     desc: { uk: 'Вкради верхню (останню викладену) картку зі столу одного суперника.', en: "Steal the top (most recently placed) card off one opponent's table." } },
-  { kind: 'fly',        ic: '🪰',
-    name: { uk: 'Муха', en: 'Fly' },
-    desc: { uk: 'Постав муху на чізбургер іншого гравця — він недійсний, поки муху не приберуть.', en: "Place a fly on another player's burger — it doesn't count until the fly is removed." } },
-  { kind: 'swatter',    ic: '🏏',
-    name: { uk: 'Мухобійка', en: 'Fly Swatter' },
-    desc: { uk: 'Прибери муху зі свого чізбургера.', en: 'Remove a fly from your own burger.' } },
-  { kind: 'gust',       ic: '🌬️',
-    name: { uk: 'Порив вітру', en: 'Gust of Wind' },
-    desc: { uk: 'Здуй свою муху на чізбургер іншого гравця.', en: "Blow your fly onto another player's burger." } },
-  { kind: 'wild',       ic: '🌟',
-    name: { uk: 'Вайлд-інгредієнт', en: 'Wild Ingredient' },
-    desc: { uk: 'Виклади на свій стіл замість будь-якого інгредієнта на вибір.', en: 'Play onto your table as any one ingredient of your choice.' } },
-  { kind: 'forcedeal',  ic: '🤝',
-    name: { uk: 'Примусовий обмін', en: 'Force Deal' },
-    desc: { uk: 'Віддай непотрібний інгредієнт і забери будь-який інгредієнт зі столу суперника — відмовитись не можна.', en: "Give away one ingredient and take any ingredient off an opponent's table — they can't refuse." } },
-  { kind: 'sayno',      ic: '🙅',
+  { kind: 'fly',        ic: '🐻',
+    name: { uk: 'Хижак', en: 'Predator' },
+    desc: { uk: 'Напусти хижака на прихисток іншого гравця — він недійсний, поки хижака не прогнати.', en: "Send a predator to raid another player's shelter — it doesn't count until the predator is driven off." } },
+  { kind: 'swatter',    ic: '🔥',
+    name: { uk: 'Багаття', en: 'Bonfire' },
+    desc: { uk: 'Відлякай хижака зі свого прихистку.', en: 'Drive a predator off your own shelter.' } },
+  { kind: 'gust',       ic: '👣',
+    name: { uk: 'Слід', en: 'Trail' },
+    desc: { uk: 'Заплутай слід — направ хижака зі свого прихистку на прихисток іншого гравця.', en: "Cover your tracks — lead the predator off your shelter onto another player's." } },
+  { kind: 'wild',       ic: '🔧',
+    name: { uk: 'Імпровізація', en: 'Improvise' },
+    desc: { uk: 'Виклади на свій стіл замість будь-якого ресурсу на вибір.', en: 'Play onto your table as any one resource of your choice.' } },
+  { kind: 'forcedeal',  ic: '💪',
+    name: { uk: 'Право сильнішого', en: 'Right of the Strongest' },
+    desc: { uk: 'Віддай непотрібний ресурс і забери будь-який ресурс зі столу суперника — відмовитись не можна.', en: "Give away one resource and take any resource off an opponent's table — they can't refuse." } },
+  { kind: 'sayno',      ic: '✋',
     name: { uk: 'Скажи Ні', en: 'Just Say No' },
     desc: { uk: 'Зіграй у відповідь, щоб скасувати дію суперника проти тебе.', en: "Play in response to cancel an opponent's action against you." } },
 ];
 
 /* Final physical print spec — fixed deck for 2–6 players:
-   60 ingredients (12x5) + 37 action cards + 18 burger cards = 115 total. Say No is
+   60 resources (12x5) + 37 action cards + 18 shelter cards = 115 total. Say No is
    deliberately scarce (2 copies) — like Monopoly Deal's "Just Say No",
    chains of it countering it are allowed (see offerReaction/respondSayNo),
    naturally bounded by there only being 2 in the whole deck. */
@@ -63,14 +72,14 @@ const MAX_PLAYERS = 6;
 
 const BOT_NAMES = {
   uk: [
-    'Кетчапалка 9000', 'Ґрильотермінатор', 'Бургербот Валентин', 'Смажений Інтелект',
-    'МайонезМайстер', 'Сирна Матриця', 'Фритюрний Оракул', 'ХрумТрон',
-    'Цибулькова Загроза', 'Соус Термоядерний', 'Дідусь Гриль', 'Капітан Кома',
+    'Компас Термінатор', 'Вузлов\'яз 9000', 'Багаттябот Валентин', 'Слідопит Інтелект',
+    'МотузМайстер', 'Виживач Матриця', 'Наметовий Оракул', 'ТайгаТрон',
+    'Хижакова Загроза', 'Компас Термоядерний', 'Дідусь Слідопит', 'Капітан Компас',
   ],
   en: [
-    'Ketchup-9000', 'Grillinator X', 'Sir Mix-a-Sauce', 'The Fry Cook Prime',
-    'MayoMcBot', 'Cheese Overlord', 'Deep Fryer Deluxe', 'CrunchTron',
-    'Pickle Menace', 'Sauce Boss 5000', 'Grandpa Grill', 'Captain Combo',
+    'Compass-9000', 'Knotinator X', 'Sir Fixes-a-Lot', 'The Trailblazer Prime',
+    'RopeMcBot', 'Wilderness Overlord', 'Basecamp Deluxe', 'TrailTron',
+    'Predator Menace', 'Ranger Boss 5000', 'Grandpa Trailhead', 'Captain Compass',
   ],
 };
 
@@ -245,15 +254,15 @@ document.addEventListener('pointerdown', () => { getAudioCtx(); Music.unlock(); 
 /* Maps triggerEffect()'s emoji to a sound, so every action-card effect
    (burger made, trade, steal, fly, etc.) gets audio for free at one call site. */
 const EFFECT_SFX = {
-  '🍔✨': 'burger',
+  '🏕️✨': 'burger',
   '🤝': 'trade',
-  '🚚': 'play',
-  '📦': 'play',
-  '🕵️': 'play',
-  '🥷': 'play',
-  '🪰': 'error',
-  '🏏💥': 'play',
-  '🌬️': 'play',
+  '🪂': 'play',
+  '📻': 'play',
+  '🌲': 'play',
+  '🐦‍⬛': 'play',
+  '🐻': 'error',
+  '🔥💥': 'play',
+  '👣': 'play',
 };
 
 function pickRandomBotNames(count) {
@@ -278,12 +287,12 @@ function mDesc(meta) { return meta.desc[LANG]; }
 
 const STRINGS = {
   uk: {
-    appTitle: 'ЧІЗБУРГЕР',
+    appTitle: 'ДИКА ПРИРОДА: ВИЖИВАННЯ',
     appSubtitle: (min, max) => `Настільна карткова гра для ${min}–${max} гравців · hotseat`,
     howManyPlayers: 'Скільки гравців?',
     playerNames: 'Імена гравців',
     playerPlaceholder: (i) => `Гравець ${i}`,
-    startGame: 'Почати гру 🍔',
+    startGame: 'Почати гру 🏕️',
     rulesBtn: '📖 Правила гри',
     rulesTooltip: 'Правила',
     menuTooltip: 'Меню',
@@ -309,7 +318,7 @@ const STRINGS = {
     roomCodeLabel: 'Код кімнати — поділись ним з друзями',
     copyLink: '🔗 Скопіювати посилання',
     playersInRoom: (n) => `Гравці в кімнаті (${n})`,
-    startOnlineGame: 'Почати гру 🍔',
+    startOnlineGame: 'Почати гру 🏕️',
     waitingForMorePlayers: `Чекаємо ще гравців (мінімум ${MIN_PLAYERS})...`,
     waitingForHost: 'Очікуємо, поки хост розпочне гру...',
     leaveRoom: '🚪 Вийти з кімнати',
@@ -327,17 +336,17 @@ const STRINGS = {
     diffHard: '😈 Важкий',
     startVsBots: 'Почати гру 🤖',
     botConsideringTrade: (name) => `🤖 ${name} обмірковує твою пропозицію обміну...`,
-    fxBurger: 'Чізбургер готовий!',
-    fxSwat: 'Муху знищено!',
-    fxFly: 'Муха!',
-    fxGust: 'Здуло!',
+    fxBurger: 'Прихисток готовий!',
+    fxSwat: 'Хижака відлякано!',
+    fxFly: 'Хижак!',
+    fxGust: 'Слід заплутано!',
     fxSteal: 'Крадіжка!',
-    fxTruck: 'Фудтрак!',
-    fxDelivery: 'Доставка!',
+    fxTruck: 'Скидання!',
+    fxDelivery: 'SOS!',
     fxInspect: 'Перевірка!',
     fxTrade: 'Обмін!',
     passInfoBanner: 'Пристрій передається по колу. Перед кожним ходом на екрані буде заставка «Передай пристрій...» — це знак віддати телефон/ноутбук наступному гравцю.',
-    rulesTitle: '📖 Правила гри «Чізбургер»',
+    rulesTitle: '📖 Правила гри «Дика Природа: Виживання»',
     gotIt: 'Зрозуміло',
     passHintDefault: 'Переконайся, що інші гравці не бачать екран.',
     passHintStart: 'Настав твій хід. Переконайся, що інші не бачать екран, і тисни, щоб побачити свою руку.',
@@ -349,30 +358,30 @@ const STRINGS = {
     tradeOffersYou: (name) => `${name} пропонує тобі цю карту:`,
     tradeChooseResponse: 'Обери свою карту у відповідь, або відхили пропозицію:',
     declineTrade: 'Відхилити обмін',
-    yourTurn: (name) => `🍔 ${name} — твій хід`,
+    yourTurn: (name) => `🏕️ ${name} — твій хід`,
     movesLeft: (n) => `${n} з 3 ходів залишилось`,
-    pileDraw: '🍞 Колода',
+    pileDraw: '🎒 Колода',
     pileDiscard: '🗑️ Скид',
-    pileBurgers: '🍔 Стос',
+    pileBurgers: '🏕️ Прихистки',
     tradeBtn: '🔄 Обмін',
     endTurnBtn: '➡️ Завершити хід',
     handLabel: (n) => `Твоя рука (${n} карт) — торкнись картки, щоб зіграти її`,
-    burgerProgress: (sum, threshold) => `${sum}/${threshold} 🍔`,
-    burgerTooltip: (v) => `Чізбургер — ${v} 🍔`,
-    burgerTooltipFly: (v) => `Чізбургер — ${v} 🍔 (не рахується, поки не прибрати муху 🪰)`,
-    burgerRevealText: (v) => `🍔 Тобі випав чізбургер номіналом ${v}!`,
-    wildLabel: 'вайлд',
-    wildPickTitle: '🌟 Вайлд — обери, яким інгредієнтом стане',
-    shoplifterTargetTitle: '🥷 Крадій — вкради верхню картку зі столу гравця',
+    burgerProgress: (sum, threshold) => `${sum}/${threshold} 🏕️`,
+    burgerTooltip: (v) => `Прихисток — ${v} 🏕️`,
+    burgerTooltipFly: (v) => `Прихисток — ${v} 🏕️ (не рахується, поки не прогнати хижака 🐻)`,
+    burgerRevealText: (v) => `🏕️ Тобі випав прихисток номіналом ${v}!`,
+    wildLabel: 'імпровізація',
+    wildPickTitle: '🔧 Імпровізація — обери, яким ресурсом стане',
+    shoplifterTargetTitle: '🐦‍⬛ Ворон-злодій — вкради верхню картку зі столу гравця',
     playerBuildCount: (name, n) => `${name} (${n} на столі)`,
-    forceDealGiveTitle: '🤝 Примусовий обмін — віддай інгредієнт',
-    forceDealTargetTitle: '🤝 Примусовий обмін — обери гравця',
-    forceDealTakeTitle: (name) => `🤝 Візьми зі столу гравця ${name}`,
+    forceDealGiveTitle: '💪 Право сильнішого — віддай ресурс',
+    forceDealTargetTitle: '💪 Право сильнішого — обери гравця',
+    forceDealTakeTitle: (name) => `💪 Візьми зі столу гравця ${name}`,
     sayNoPromptTitle: (actorName, cardName) => `${actorName} грає "${cardName}" проти тебе!`,
     sayNoPromptBody: 'Хочеш зіграти "Скажи Ні" й скасувати цю дію?',
-    sayNoConfirm: '🙅 Скажи Ні!',
+    sayNoConfirm: '✋ Скажи Ні!',
     sayNoDecline: 'Дозволити',
-    saidNo: (name) => `🙅 ${name} каже "Ні!" — дію скасовано.`,
+    saidNo: (name) => `✋ ${name} каже "Ні!" — дію скасовано.`,
     fxSayNo: 'Скажи Ні!',
     tradeTargetTitle: '🔄 Обмін — обери гравця',
     playerCardsCount: (name, n) => `${name} (${n} карт)`,
@@ -385,13 +394,13 @@ const STRINGS = {
     tradeNoMatch: 'У тебе немає такої картки — можеш лише відхилити обмін.',
     reasonTradeKindMismatch: 'Не те, що просили',
     proposeTrade: 'Запропонувати обмін',
-    deliveryTitle: "📦 Кур'єр — оголоси інгредієнт",
-    inspectorTargetTitle: '🕵️ Санінспектор — обери гравця',
-    inspectorViewTitle: (name) => `🕵️ Рука гравця ${name} — обери 2 карти`,
+    deliveryTitle: "📻 Сигнал SOS — оголоси ресурс",
+    inspectorTargetTitle: '🌲 Лісник — обери гравця',
+    inspectorViewTitle: (name) => `🌲 Рука гравця ${name} — обери 2 карти`,
     takeSelected: (n) => `Забрати обрані карти (${n}/2)`,
-    flyTargetTitle: '🪰 Муха — обери жертву',
-    playerBurgersCount: (name, n) => `${name} (${n} бургер(и))`,
-    gustTargetTitle: '🌬️ Порив вітру — здути муху на когось',
+    flyTargetTitle: '🐻 Хижак — обери жертву',
+    playerBurgersCount: (name, n) => `${name} (${n} прихисток(и))`,
+    gustTargetTitle: '👣 Слід — направити хижака на когось',
     cancel: 'Скасувати',
     menuTitle: '☰ Меню',
     menuRules: '📖 Правила гри',
@@ -411,48 +420,48 @@ const STRINGS = {
     confirmExitTitle: '🚪 Вийти в головне меню?',
     confirmExitBody: 'Поточний прогрес гри буде втрачено.',
     yesExit: 'Так, вийти',
-    winnerTableHeaders: ['Гравець', '🍔 Чізбургерів', '🪰 З мухою'],
+    winnerTableHeaders: ['Гравець', '🏕️ Прихистків', '🐻 З хижаком'],
     newGameBtn: 'Нова гра',
     gameStarted: 'Гру розпочато! Кожен гравець отримав по 7 карт.',
     reshuffled: 'Колоду скидів перетасовано назад у колоду для взяття карт.',
     drawCards: (name, n) => `${name} бере ${n} карт(и) з колоди.`,
-    burgerPileEmpty: 'Стос чізбургерів порожній!',
+    burgerPileEmpty: 'Прихистків не залишилось!',
     playedIngredient: (name, ing) => `${name} викладає ${ing} на стіл.`,
-    playedGrandma: (name) => `👵 ${name} грає Бабусин рецепт — тепер потрібно лише 3 інгредієнти!`,
-    madeBurger: (name) => `🍔 ${name} завершує чізбургер!`,
+    playedGrandma: (name) => `🎒 ${name} використовує Дідусеві навички — тепер потрібно лише 3 ресурси!`,
+    madeBurger: (name) => `🏕️ ${name} добудовує прихисток!`,
     tradeDeclined: (to, from) => `${to} відхилив(ла) пропозицію обміну від ${from}.`,
     tradeAccepted: (from, to) => `🤝 ${from} та ${to} успішно обмінялися картами.`,
-    playedFoodTruck: (name, kept) => `🚚 ${name} грає Фудтрак і бере ${kept} карт(и) з колоди.`,
-    playedDelivery: (name, ing, total) => `📦 ${name} грає Кур'єра: оголосив "${ing}" і отримав ${total} карт(и).`,
-    playedInspector: (name, target) => `🕵️ ${name} грає Санінспектора проти ${target} і бере 2 карти.`,
-    playedShoplifter: (name, target, ing) => `🥷 ${name} краде ${ing} зі столу гравця ${target}.`,
-    playedForceDeal: (name, target, given, taken) => `🤝 ${name} віддає ${given} гравцю ${target} і забирає ${taken} з його столу.`,
-    playedFly: (name, target) => `🪰 ${name} підкидає муху на чізбургер гравця ${target}.`,
-    playedSwatter: (name) => `🏏 ${name} вбиває муху на своєму чізбургері!`,
-    playedGust: (name, target) => `🌬️ ${name} здуває муху на чізбургер гравця ${target}.`,
+    playedFoodTruck: (name, kept) => `🪂 ${name} грає Скидання з повітря і бере ${kept} карт(и) з колоди.`,
+    playedDelivery: (name, ing, total) => `📻 ${name} подає Сигнал SOS: запросив "${ing}" і отримав ${total} карт(и).`,
+    playedInspector: (name, target) => `🌲 ${name} грає Лісника проти ${target} і бере 2 карти.`,
+    playedShoplifter: (name, target, ing) => `🐦‍⬛ ${name} (Ворон-злодій) краде ${ing} зі столу гравця ${target}.`,
+    playedForceDeal: (name, target, given, taken) => `💪 ${name} застосовує право сильнішого: віддає ${given} гравцю ${target} і забирає ${taken} з його столу.`,
+    playedFly: (name, target) => `🐻 ${name} напускає хижака на прихисток гравця ${target}.`,
+    playedSwatter: (name) => `🔥 ${name} відлякує хижака багаттям!`,
+    playedGust: (name, target) => `👣 ${name} заплутує слід — хижак тепер у гравця ${target}.`,
     turnEnded: (name) => `--- Хід гравця ${name} завершено ---`,
-    winByThreshold: (name, n) => `${name} набрав ${n}+ чізбургерів і перемагає!`,
-    pileDepleted: 'Стос чізбургерів вичерпано!',
+    winByThreshold: (name, n) => `${name} збудував ${n}+ прихистків і перемагає!`,
+    pileDepleted: 'Прихистки закінчились!',
     reasonNoMoves: 'Не залишилось ходів у цьому ході',
-    reasonGrandmaAlready: 'Бабусин рецепт вже діє для поточного бургера',
-    reasonAlreadyBuilt: 'Цей інгредієнт вже викладено на стіл',
+    reasonGrandmaAlready: 'Дідусеві навички вже діють для поточного прихистку',
+    reasonAlreadyBuilt: 'Цей ресурс вже викладено на стіл',
     reasonInspectorNoTargets: 'У жодного суперника немає карт на руках',
-    reasonShoplifterNoTargets: 'У жодного суперника немає інгредієнтів на столі',
-    reasonForceDealNoGive: 'У тебе немає інгредієнтів для обміну',
-    reasonFlyNoTargets: 'У жодного суперника немає готового чізбургера',
-    reasonNoFlyOnYours: 'На твоєму чізбургері немає мухи',
+    reasonShoplifterNoTargets: 'У жодного суперника немає ресурсів на столі',
+    reasonForceDealNoGive: 'У тебе немає ресурсів для обміну',
+    reasonFlyNoTargets: 'У жодного суперника немає готового прихистку',
+    reasonNoFlyOnYours: 'На твоєму прихистку немає хижака',
     reasonSayNoReactive: 'Цю карту можна зіграти лише у відповідь на дію суперника',
     newBadge: 'НОВА',
     groupBtn: '📚 Групувати',
     fanBtn: '🎴 Віялом',
   },
   en: {
-    appTitle: 'CHEESEBURGER',
+    appTitle: 'WILD SURVIVAL',
     appSubtitle: (min, max) => `A tabletop card game for ${min}–${max} players · hotseat`,
     howManyPlayers: 'How many players?',
     playerNames: 'Player names',
     playerPlaceholder: (i) => `Player ${i}`,
-    startGame: 'Start Game 🍔',
+    startGame: 'Start Game 🏕️',
     rulesBtn: '📖 Rules',
     rulesTooltip: 'Rules',
     menuTooltip: 'Menu',
@@ -478,7 +487,7 @@ const STRINGS = {
     roomCodeLabel: 'Room code — share it with your friends',
     copyLink: '🔗 Copy invite link',
     playersInRoom: (n) => `Players in room (${n})`,
-    startOnlineGame: 'Start Game 🍔',
+    startOnlineGame: 'Start Game 🏕️',
     waitingForMorePlayers: `Waiting for more players (at least ${MIN_PLAYERS})...`,
     waitingForHost: 'Waiting for the host to start the game...',
     leaveRoom: '🚪 Leave room',
@@ -496,17 +505,17 @@ const STRINGS = {
     diffHard: '😈 Hard',
     startVsBots: 'Start Game 🤖',
     botConsideringTrade: (name) => `🤖 ${name} is considering your trade offer...`,
-    fxBurger: 'Cheeseburger ready!',
-    fxSwat: 'Fly swatted!',
-    fxFly: 'Fly!',
-    fxGust: 'Blown away!',
+    fxBurger: 'Shelter complete!',
+    fxSwat: 'Predator scared off!',
+    fxFly: 'Predator!',
+    fxGust: 'Trail covered!',
     fxSteal: 'Stolen!',
-    fxTruck: 'Food Truck!',
-    fxDelivery: 'Delivery!',
+    fxTruck: 'Airdrop!',
+    fxDelivery: 'SOS!',
     fxInspect: 'Inspected!',
     fxTrade: 'Traded!',
     passInfoBanner: 'The device is passed around the table. Before every turn you’ll see a "Pass the device..." screen — that’s the cue to hand the phone/laptop to the next player.',
-    rulesTitle: '📖 Cheeseburger — Rules',
+    rulesTitle: '📖 Wild Survival — Rules',
     gotIt: 'Got it',
     passHintDefault: "Make sure other players can't see the screen.",
     passHintStart: "It's your turn. Make sure no one else can see the screen, then tap to reveal your hand.",
@@ -518,30 +527,30 @@ const STRINGS = {
     tradeOffersYou: (name) => `${name} offers you this card:`,
     tradeChooseResponse: 'Choose a card to trade back, or decline the offer:',
     declineTrade: 'Decline trade',
-    yourTurn: (name) => `🍔 ${name} — your turn`,
+    yourTurn: (name) => `🏕️ ${name} — your turn`,
     movesLeft: (n) => `${n} of 3 moves left`,
-    pileDraw: '🍞 Draw',
+    pileDraw: '🎒 Draw',
     pileDiscard: '🗑️ Discard',
-    pileBurgers: '🍔 Burgers',
+    pileBurgers: '🏕️ Shelters',
     tradeBtn: '🔄 Trade',
     endTurnBtn: '➡️ End turn',
     handLabel: (n) => `Your hand (${n} cards) — tap a card to play it`,
-    burgerProgress: (sum, threshold) => `${sum}/${threshold} 🍔`,
-    burgerTooltip: (v) => `Cheeseburger — ${v} 🍔`,
-    burgerTooltipFly: (v) => `Cheeseburger — ${v} 🍔 (doesn't count until the fly is removed 🪰)`,
-    burgerRevealText: (v) => `🍔 You got a value-${v} cheeseburger!`,
-    wildLabel: 'wild',
-    wildPickTitle: '🌟 Wild — choose which ingredient it becomes',
-    shoplifterTargetTitle: "🥷 Shoplifter — steal the top card off a player's table",
+    burgerProgress: (sum, threshold) => `${sum}/${threshold} 🏕️`,
+    burgerTooltip: (v) => `Shelter — ${v} 🏕️`,
+    burgerTooltipFly: (v) => `Shelter — ${v} 🏕️ (doesn't count until the predator is driven off 🐻)`,
+    burgerRevealText: (v) => `🏕️ You got a value-${v} shelter!`,
+    wildLabel: 'improvise',
+    wildPickTitle: '🔧 Improvise — choose which resource it becomes',
+    shoplifterTargetTitle: "🐦‍⬛ Thieving Raven — steal the top card off a player's table",
     playerBuildCount: (name, n) => `${name} (${n} on the table)`,
-    forceDealGiveTitle: '🤝 Force Deal — give up an ingredient',
-    forceDealTargetTitle: '🤝 Force Deal — choose a player',
-    forceDealTakeTitle: (name) => `🤝 Take from ${name}'s table`,
+    forceDealGiveTitle: '💪 Right of the Strongest — give up a resource',
+    forceDealTargetTitle: '💪 Right of the Strongest — choose a player',
+    forceDealTakeTitle: (name) => `💪 Take from ${name}'s table`,
     sayNoPromptTitle: (actorName, cardName) => `${actorName} plays "${cardName}" against you!`,
     sayNoPromptBody: 'Do you want to play "Just Say No" and cancel it?',
-    sayNoConfirm: '🙅 Just Say No!',
+    sayNoConfirm: '✋ Just Say No!',
     sayNoDecline: 'Allow it',
-    saidNo: (name) => `🙅 ${name} says "No!" — the action is cancelled.`,
+    saidNo: (name) => `✋ ${name} says "No!" — the action is cancelled.`,
     fxSayNo: 'Just Say No!',
     tradeTargetTitle: '🔄 Trade — choose a player',
     playerCardsCount: (name, n) => `${name} (${n} cards)`,
@@ -554,13 +563,13 @@ const STRINGS = {
     tradeNoMatch: "You don't have that — you can only decline this trade.",
     reasonTradeKindMismatch: "Not what's being asked for",
     proposeTrade: 'Propose trade',
-    deliveryTitle: '📦 Delivery Guy — call an ingredient',
-    inspectorTargetTitle: '🕵️ Health Inspector — choose a player',
-    inspectorViewTitle: (name) => `🕵️ ${name}'s hand — pick 2 cards`,
+    deliveryTitle: '📻 SOS Signal — call a resource',
+    inspectorTargetTitle: '🌲 Ranger — choose a player',
+    inspectorViewTitle: (name) => `🌲 ${name}'s hand — pick 2 cards`,
     takeSelected: (n) => `Take selected cards (${n}/2)`,
-    flyTargetTitle: '🪰 Fly — choose a victim',
-    playerBurgersCount: (name, n) => `${name} (${n} burger(s))`,
-    gustTargetTitle: '🌬️ Gust of Wind — blow the fly onto someone',
+    flyTargetTitle: '🐻 Predator — choose a victim',
+    playerBurgersCount: (name, n) => `${name} (${n} shelter(s))`,
+    gustTargetTitle: '👣 Trail — lead the predator to someone',
     cancel: 'Cancel',
     menuTitle: '☰ Menu',
     menuRules: '📖 Rules',
@@ -580,37 +589,37 @@ const STRINGS = {
     confirmExitTitle: '🚪 Exit to main menu?',
     confirmExitBody: 'Current progress will be lost.',
     yesExit: 'Yes, exit',
-    winnerTableHeaders: ['Player', '🍔 Cheeseburgers', '🪰 With fly'],
+    winnerTableHeaders: ['Player', '🏕️ Shelters', '🐻 With predator'],
     newGameBtn: 'New game',
     gameStarted: 'Game started! Each player was dealt 7 cards.',
     reshuffled: 'The discard pile was reshuffled back into the draw pile.',
     drawCards: (name, n) => `${name} draws ${n} card(s) from the deck.`,
-    burgerPileEmpty: 'The burger pile is empty!',
+    burgerPileEmpty: 'No shelters left!',
     playedIngredient: (name, ing) => `${name} plays ${ing} onto the table.`,
-    playedGrandma: (name) => `👵 ${name} plays Grandma's Recipe — now only 3 ingredients are needed!`,
-    madeBurger: (name) => `🍔 ${name} completes a cheeseburger!`,
+    playedGrandma: (name) => `🎒 ${name} uses Grandpa's Survival Skills — now only 3 resources are needed!`,
+    madeBurger: (name) => `🏕️ ${name} finishes a shelter!`,
     tradeDeclined: (to, from) => `${to} declined the trade offer from ${from}.`,
     tradeAccepted: (from, to) => `🤝 ${from} and ${to} successfully traded cards.`,
-    playedFoodTruck: (name, kept) => `🚚 ${name} plays Food Truck and draws ${kept} card(s).`,
-    playedDelivery: (name, ing, total) => `📦 ${name} plays Delivery Guy: called "${ing}" and received ${total} card(s).`,
-    playedInspector: (name, target) => `🕵️ ${name} plays Health Inspector on ${target} and takes 2 cards.`,
-    playedShoplifter: (name, target, ing) => `🥷 ${name} steals ${ing} off ${target}'s table.`,
-    playedForceDeal: (name, target, given, taken) => `🤝 ${name} gives ${given} to ${target} and takes ${taken} off their table.`,
-    playedFly: (name, target) => `🪰 ${name} tosses a fly onto ${target}'s burger.`,
-    playedSwatter: (name) => `🏏 ${name} swats the fly off their burger!`,
-    playedGust: (name, target) => `🌬️ ${name} blows the fly onto ${target}'s burger.`,
+    playedFoodTruck: (name, kept) => `🪂 ${name} plays Airdrop and grabs ${kept} card(s).`,
+    playedDelivery: (name, ing, total) => `📻 ${name} sends an SOS Signal: called "${ing}" and received ${total} card(s).`,
+    playedInspector: (name, target) => `🌲 ${name} plays Ranger on ${target} and takes 2 cards.`,
+    playedShoplifter: (name, target, ing) => `🐦‍⬛ ${name} (Thieving Raven) steals ${ing} off ${target}'s table.`,
+    playedForceDeal: (name, target, given, taken) => `💪 ${name} invokes Right of the Strongest: gives ${given} to ${target} and takes ${taken} off their table.`,
+    playedFly: (name, target) => `🐻 ${name} sends a predator to raid ${target}'s shelter.`,
+    playedSwatter: (name) => `🔥 ${name} scares the predator off with a bonfire!`,
+    playedGust: (name, target) => `👣 ${name} covers their tracks — the predator now stalks ${target}.`,
     turnEnded: (name) => `--- ${name}'s turn ended ---`,
-    winByThreshold: (name, n) => `${name} reached ${n}+ cheeseburgers and wins!`,
-    pileDepleted: 'The burger pile ran out!',
+    winByThreshold: (name, n) => `${name} built ${n}+ shelters and wins!`,
+    pileDepleted: 'The shelter pile ran out!',
     reasonNoMoves: 'No moves left this turn',
-    reasonGrandmaAlready: "Grandma's Recipe is already active for this burger",
-    reasonAlreadyBuilt: 'That ingredient is already on the table',
+    reasonGrandmaAlready: "Grandpa's Survival Skills are already active for this shelter",
+    reasonAlreadyBuilt: 'That resource is already on the table',
     reasonInspectorNoTargets: 'No opponent has any cards in hand',
     reasonShoplifterNoTargets: 'No opponent has anything on their table',
-    reasonForceDealNoGive: 'You have no ingredients to trade away',
-    reasonFlyNoTargets: 'No opponent has a finished burger',
+    reasonForceDealNoGive: 'You have no resources to trade away',
+    reasonFlyNoTargets: 'No opponent has a finished shelter',
     reasonSayNoReactive: 'This card can only be played in response to an opponent’s action',
-    reasonNoFlyOnYours: "You don't have a fly on your burger",
+    reasonNoFlyOnYours: "You don't have a predator on your shelter",
     newBadge: 'NEW',
     groupBtn: '📚 Group',
     fanBtn: '🎴 Fan out',
@@ -625,9 +634,9 @@ function t(key, ...args) {
 
 /* ---------------- Rules text ---------------- */
 
-/* Actual card art in the rules — the components list said "60 ingredient
-   cards, 30 action cards, 18 burger cards" but a first-time reader has no
-   idea what those look like until they're already mid-game. */
+/* Actual card art in the rules — the components list names the resource
+   and action cards but a first-time reader has no idea what those look
+   like until they're already mid-game. */
 function rulesCardGalleryHtml() {
   const uk = LANG === 'uk';
   const row = (label, cardsHtml) => `
@@ -645,9 +654,9 @@ function rulesCardGalleryHtml() {
   `;
   return `
     <div class="rules-card-gallery">
-      ${row(uk ? 'Інгредієнти' : 'Ingredients', ingredientCards)}
+      ${row(uk ? 'Ресурси' : 'Resources', ingredientCards)}
       ${row(uk ? 'Карти дій' : 'Action cards', actionCards)}
-      ${row(uk ? 'Чізбургери (номінал 1, 2, сорочка)' : 'Burgers (value 1, 2, face-down)', burgerCards)}
+      ${row(uk ? 'Прихистки (номінал 1, 2, сорочка)' : 'Shelters (value 1, 2, face-down)', burgerCards)}
     </div>
   `;
 }
@@ -662,23 +671,23 @@ function rulesHtml() {
   if (uk) {
     return `
       <p><b>${MIN_PLAYERS}–${MAX_PLAYERS} гравців · 20–40 хвилин</b></p>
-      <p>У містечку, де живуть гравці, немає нічого крутішого за ідеальний чізбургер.
-      Але потрібні інгредієнти рідкісні, тож усі стають за грилі й змагаються, хто
-      приготує більше чізбургерів. Бургер збирається прямо на столі перед гравцем,
+      <p>Ви опинилися серед дикої природи, і найважливіше — вижити. Але потрібні
+      ресурси розкидані й рідкісні, тож кожен будує власний прихисток, змагаючись,
+      хто зробить це першим. Прихисток збирається прямо на столі перед гравцем,
       картка за карткою — тож усі бачать, наскільки суперник близький до завершення.</p>
 
       <h4>Компоненти</h4>
       <ul>
-        <li><b>60 карт інгредієнтів</b> — по ${INGREDIENT_COUNT_PER_KIND} карток кожного з 5 видів: ${ingredientNames}.</li>
+        <li><b>60 карт ресурсів</b> — по ${INGREDIENT_COUNT_PER_KIND} карток кожного з 5 видів: ${ingredientNames}.</li>
         <li><b>Карти дій</b> — ${actionCountsLine}.</li>
-        <li><b>18 карт чізбургерів</b> (окрема колода, сорочкою догори) — ${BURGER_PILE_SINGLES} карток вартістю 1 і ${BURGER_PILE_DOUBLES} карток вартістю 2.</li>
+        <li><b>18 карт прихистків</b> (окрема колода, сорочкою догори) — ${BURGER_PILE_SINGLES} карток вартістю 1 і ${BURGER_PILE_DOUBLES} карток вартістю 2.</li>
       </ul>
       ${cardGallery}
 
       <h4>Підготовка</h4>
       <ol>
-        <li>Перетасуйте 18 карт чізбургерів окремо — це стос чізбургерів, кладіть його сорочкою догори в центр столу.</li>
-        <li>Перетасуйте разом усі карти інгредієнтів та дій.</li>
+        <li>Перетасуйте 18 карт прихистків окремо — це стос прихистків, кладіть його сорочкою догори в центр столу.</li>
+        <li>Перетасуйте разом усі карти ресурсів та дій.</li>
         <li>Роздайте кожному гравцю по 7 карт.</li>
         <li>Решта карт — колода для взяття, кладіть поруч сорочкою догори.</li>
       </ol>
@@ -690,8 +699,8 @@ function rulesHtml() {
         <li>Робить <b>до 3 ходів</b> у будь-якому порядку й комбінації:</li>
       </ol>
       <ul>
-        <li><b>Викласти інгредієнт на стіл</b> — кожна картка інгредієнта з руки, викладена на свій стіл, це окремий хід. Коли на столі зібрано всі 5 різних видів (або 3, якщо зіграно Бабусин рецепт) — бургер одразу завершується цим же ходом: карти скидаються, гравець бере верхню картку зі стосу чізбургерів.</li>
-        <li><b>Обмін</b> — запропонувати одному гравцю обмін картами (1 на 1): віддай одну свою карту й вкажи, що хочеш отримати натомість (конкретний інгредієнт, будь-яку карту дії або без різниці). Гравець може погодитись, давши відповідну карту, або відмовитись; відмова не рахується як витрачений хід.</li>
+        <li><b>Викласти ресурс на стіл</b> — кожна картка ресурсу з руки, викладена на свій стіл, це окремий хід. Коли на столі зібрано всі 5 різних видів (або 3, якщо зіграно Дідусеві навички) — прихисток одразу завершується цим же ходом: карти скидаються, гравець бере верхню картку зі стосу прихистків.</li>
+        <li><b>Обмін</b> — запропонувати одному гравцю обмін картами (1 на 1): віддай одну свою карту й вкажи, що хочеш отримати натомість (конкретний ресурс, будь-яку карту дії або без різниці). Гравець може погодитись, давши відповідну карту, або відмовитись; відмова не рахується як витрачений хід.</li>
         <li><b>Зіграти карту дії</b> — розіграти одну з карт дій (описи нижче). Кожна зіграна карта дії — окремий хід.</li>
       </ul>
       <p>Коли колода для взяття закінчується, скид перетасовується і стає новою колодою.</p>
@@ -700,46 +709,46 @@ function rulesHtml() {
       <ul>${actionListItems}</ul>
 
       <h4>Скажи Ні</h4>
-      <p>Санінспектор, Муха, Порив вітру, Крадій і Примусовий обмін цілять в конкретного
+      <p>Лісник, Хижак, Слід, Ворон-злодій і Право сильнішого цілять в конкретного
       гравця — той може у відповідь зіграти «Скажи Ні», щоб скасувати саму дію
       (картка й хід нападника все одно витрачені, скасовується лише ефект). На «Скажи Ні»
       теж можна відповісти своїм «Скажи Ні» — і так по колу, поки в когось лишається
       картка; всього їх у грі ${ACTION_COUNTS.sayno}, тож ланцюжок сам собою обривається.</p>
 
-      <h4>Муха на чізбургері</h4>
-      <p>Картка «Муха» кладеться на один з готових чізбургерів суперника — така картка не
-      рахується у фінальному підрахунку, поки муху не приберуть Мухобійкою (знищити) або
-      Поривом вітру (передати іншому гравцю). Готові чізбургери кладуться перед гравцем
-      сорочкою догори, поруч одна з одною (не в стос) — так усі бачать кількість карт,
+      <h4>Хижак на прихистку</h4>
+      <p>Картка «Хижак» кладеться на один з готових прихистків суперника — така картка не
+      рахується у фінальному підрахунку, поки хижака не проженуть Багаттям (назавжди) або
+      Слідом (направити на іншого гравця). Готові прихистки кладуться перед гравцем
+      сорочкою догори, поруч один з одним (не в стос) — так усі бачать кількість карт,
       але не їхню вартість (1 чи 2).</p>
 
       <h4>Кінець гри</h4>
-      <p>Гра закінчується, щойно сумарна вартість чізбургерів (без мух) одного гравця
+      <p>Гра закінчується, щойно сумарна вартість прихистків (без хижаків) одного гравця
       досягає <b>${WIN_THRESHOLD}</b> — він перемагає.</p>
-      <p>Альтернативний варіант: якщо стос чізбургерів закінчився раніше — гра завершується
-      одразу, перемагає гравець із найбільшою сумою (без мух); при нічиї — у кого більше карток чізбургерів.</p>
+      <p>Альтернативний варіант: якщо стос прихистків закінчився раніше — гра завершується
+      одразу, перемагає гравець із найбільшою сумою (без хижаків); при нічиї — у кого більше карток прихистків.</p>
     `;
   }
 
   return `
     <p><b>${MIN_PLAYERS}–${MAX_PLAYERS} players · 20–40 minutes</b></p>
-    <p>In a town where nothing beats a perfect cheeseburger, the ingredients are scarce
-    and everyone's manning their own grill, racing to make more cheeseburgers than
-    anyone else. Burgers are assembled right on the table in front of each player,
-    card by card — so everyone can see exactly how close their rivals are.</p>
+    <p>You're stranded in the wilderness, and staying alive is all that matters. Resources
+    are scattered and scarce, so everyone builds their own shelter, racing to finish
+    first. A shelter is assembled right on the table in front of each player, card by
+    card — so everyone can see exactly how close their rivals are.</p>
 
     <h4>Components</h4>
     <ul>
-      <li><b>60 ingredient cards</b> — ${INGREDIENT_COUNT_PER_KIND} of each of the 5 kinds: ${ingredientNames}.</li>
+      <li><b>60 resource cards</b> — ${INGREDIENT_COUNT_PER_KIND} of each of the 5 kinds: ${ingredientNames}.</li>
       <li><b>Action cards</b> — ${actionCountsLine}.</li>
-      <li><b>18 burger cards</b> (a separate face-down deck) — ${BURGER_PILE_SINGLES} cards worth 1 and ${BURGER_PILE_DOUBLES} cards worth 2.</li>
+      <li><b>18 shelter cards</b> (a separate face-down deck) — ${BURGER_PILE_SINGLES} cards worth 1 and ${BURGER_PILE_DOUBLES} cards worth 2.</li>
     </ul>
     ${cardGallery}
 
     <h4>Setup</h4>
     <ol>
-      <li>Shuffle the 18 burger cards separately — this is the burger pile, place it face-down in the middle of the table.</li>
-      <li>Shuffle all the ingredient and action cards together.</li>
+      <li>Shuffle the 18 shelter cards separately — this is the shelter pile, place it face-down in the middle of the table.</li>
+      <li>Shuffle all the resource and action cards together.</li>
       <li>Deal 7 cards to each player.</li>
       <li>The rest becomes the draw pile — place it face-down nearby.</li>
     </ol>
@@ -751,8 +760,8 @@ function rulesHtml() {
       <li>Makes <b>up to 3 moves</b> in any order or combination:</li>
     </ol>
     <ul>
-      <li><b>Play an ingredient onto the table</b> — each ingredient card played from your hand onto your own table is a separate move. Once all 5 different kinds are on the table (or 3, if Grandma's Recipe was played), the burger completes immediately as part of that same move: the cards are discarded and you take the top card of the burger pile.</li>
-      <li><b>Trade</b> — offer another player a 1-for-1 card trade: give up one of your cards and say what you want back (a specific ingredient, any action card, or no preference). They can accept by handing over a matching card, or decline; a decline doesn't cost you the move.</li>
+      <li><b>Play a resource onto the table</b> — each resource card played from your hand onto your own table is a separate move. Once all 5 different kinds are on the table (or 3, if Grandpa's Survival Skills was played), the shelter completes immediately as part of that same move: the cards are discarded and you take the top card of the shelter pile.</li>
+      <li><b>Trade</b> — offer another player a 1-for-1 card trade: give up one of your cards and say what you want back (a specific resource, any action card, or no preference). They can accept by handing over a matching card, or decline; a decline doesn't cost you the move.</li>
       <li><b>Play an action card</b> — play one of the action cards (described below). Each action card played is a separate move.</li>
     </ul>
     <p>When the draw pile runs out, the discard pile is reshuffled and becomes the new draw pile.</p>
@@ -761,26 +770,26 @@ function rulesHtml() {
     <ul>${actionListItems}</ul>
 
     <h4>Just Say No</h4>
-    <p>Health Inspector, Fly, Gust of Wind, Shoplifter, and Force Deal all target one
+    <p>Ranger, Predator, Trail, Thieving Raven, and Right of the Strongest all target one
     specific player — that player can respond with "Just Say No" to cancel the effect
     (the mover's card and move are still spent; only the payoff is cancelled). Just Say
     No can itself be answered with another Just Say No, and so on for as long as
     someone still has one — there are only ${ACTION_COUNTS.sayno} in the whole deck, so
     the chain is naturally short.</p>
 
-    <h4>Fly on your burger</h4>
-    <p>The Fly card is placed on one of an opponent's finished burger cards — that card
-    doesn't count toward the final total until the fly is removed, either with a Fly
-    Swatter (destroyed) or a Gust of Wind (passed to another player). Finished burgers
-    are placed face-down in front of a player, side by side (not stacked) — so everyone
-    can see how many cards a player has, but not their value (1 or 2).</p>
+    <h4>Predator on your shelter</h4>
+    <p>The Predator card is placed on one of an opponent's finished shelter cards — that
+    card doesn't count toward the final total until the predator is driven off, either
+    with a Bonfire (gone for good) or a Trail (led onto another player). Finished
+    shelters are placed face-down in front of a player, side by side (not stacked) — so
+    everyone can see how many cards a player has, but not their value (1 or 2).</p>
 
     <h4>Ending the game</h4>
-    <p>The game ends the moment any player's cheeseburger total (excluding any with a
-    fly on them) reaches <b>${WIN_THRESHOLD}</b> — that player wins.</p>
-    <p>Alternative ending: if the burger pile runs out first, the game ends immediately
-    and the player with the highest total (excluding flies) wins; ties are broken by
-    whoever has more burger cards.</p>
+    <p>The game ends the moment any player's shelter total (excluding any with a
+    predator on them) reaches <b>${WIN_THRESHOLD}</b> — that player wins.</p>
+    <p>Alternative ending: if the shelter pile runs out first, the game ends immediately
+    and the player with the highest total (excluding predators) wins; ties are broken by
+    whoever has more shelter cards.</p>
   `;
 }
 
@@ -802,30 +811,33 @@ function renderRulesModal() {
 /* Illustrated card art (SVGs in assets/cards/). Action-card art has the
    name + rules text baked in (English only, from the source design files);
    ingredient art is icon-only, so we still overlay a text label for those. */
+/* Points at the wilderness-survival art set (assets/cards/*) — the
+   original cheeseburger illustrations are still on disk unused, in case
+   a future reskin ever wants them back. */
 const CARD_ART = {
   ingredient: {
-    bun: 'assets/cards/bun.svg',
-    patty: 'assets/cards/patty.svg',
-    cheese: 'assets/cards/cheese.svg',
-    lettuce: 'assets/cards/lettuce.svg',
-    tomato: 'assets/cards/tomato.svg',
+    bun: 'assets/cards/wood.svg',
+    patty: 'assets/cards/water.svg',
+    cheese: 'assets/cards/spark.svg',
+    lettuce: 'assets/cards/rope.svg',
+    tomato: 'assets/cards/medkit.svg',
   },
   action: {
-    foodtruck: 'assets/cards/foodtruck.svg',
-    delivery: 'assets/cards/delivery.svg',
-    grandma: 'assets/cards/grandma.svg',
-    inspector: 'assets/cards/inspector.svg',
-    shoplifter: 'assets/cards/shoplifter.svg',
-    fly: 'assets/cards/fly.svg',
-    swatter: 'assets/cards/swatter.svg',
-    gust: 'assets/cards/gust.svg',
+    foodtruck: 'assets/cards/airdrop.svg',
+    delivery: 'assets/cards/sos.svg',
+    grandma: 'assets/cards/grandpa.svg',
+    inspector: 'assets/cards/ranger.svg',
+    shoplifter: 'assets/cards/raven.svg',
+    fly: 'assets/cards/predator.svg',
+    swatter: 'assets/cards/bonfire.svg',
+    gust: 'assets/cards/trail.svg',
     wild: 'assets/cards/wild.svg',
     forcedeal: 'assets/cards/forcedeal.svg',
     sayno: 'assets/cards/sayno.svg',
   },
 };
-const BACK_ART = { generic: 'assets/cards/back-all.svg', burger: 'assets/cards/back-burger.svg' };
-const BURGER_FRONT_ART = { 1: 'assets/cards/burger1.svg', 2: 'assets/cards/burger2.svg' };
+const BACK_ART = { generic: 'assets/cards/card-back.svg', burger: 'assets/cards/shelter-back.svg' };
+const BURGER_FRONT_ART = { 1: 'assets/cards/shelter1.svg', 2: 'assets/cards/shelter2.svg' };
 function cardArtSrc(card) { return CARD_ART[card.type] && CARD_ART[card.type][card.kind]; }
 
 function ingMeta(kind) { return INGREDIENTS.find(i => i.kind === kind); }
@@ -1184,7 +1196,7 @@ function respondSayNo(useSayNo) {
     const card = removeFromHand(target, c => c.type === 'action' && c.kind === 'sayno');
     if (card) G.discardPile.push(card);
     addLog(t('saidNo', target.name));
-    triggerEffect('🙅', t('fxSayNo'), target.id);
+    triggerEffect('✋', t('fxSayNo'), target.id);
     G.reaction = null;
     goToPassCover(r.actorId, 'backToGame');
   } else {
@@ -1388,7 +1400,7 @@ function playGrandmaShortcut() {
   pile.grandmaActive = true;
   G.movesLeft--;
   addLog(t('playedGrandma', p.name));
-  triggerEffect('👵', null, p.id);
+  triggerEffect('🎒', null, p.id);
   finishMoveMaybeCompletePile(p, pile);
 }
 
@@ -1407,7 +1419,7 @@ function playWild(kind) {
   const pile = addToBuild(p, kind, card.id, true);
   G.movesLeft--;
   addLog(t('playedIngredient', p.name, `${t('wildLabel')} (${mName(ingMeta(kind))})`));
-  triggerEffect('🌟', null, p.id);
+  triggerEffect('🔧', null, p.id);
   LOCAL_UI.modal = null;
   finishMoveMaybeCompletePile(p, pile);
 }
@@ -1455,7 +1467,7 @@ function finishMoveMaybeCompletePile(p, pile) {
     pile.cards.forEach(b => G.discardPile.push({ id: b.id, type: 'ingredient', kind: b.kind }));
     const burgerCard = giveBurgerCard(p);
     addLog(t('madeBurger', p.name));
-    triggerEffect('🍔✨', t('fxBurger'), p.id);
+    triggerEffect('🏕️✨', t('fxBurger'), p.id);
     if (burgerCard && isMe(p.id)) showBurgerReveal(burgerCard.value);
     afterBurgerMade();
     return;
@@ -1578,7 +1590,7 @@ function playFoodTruck() {
   taken.forEach(c => p.hand.push(c));
   G.movesLeft--;
   addLog(t('playedFoodTruck', p.name, taken.length));
-  triggerEffect('🚚', t('fxTruck'), p.id);
+  triggerEffect('🪂', t('fxTruck'), p.id);
   markNewCards(taken.map(c => c.id));
   scheduleNewCardExpiry();
   LOCAL_UI.modal = null;
@@ -1606,7 +1618,7 @@ function playDelivery(kind) {
   });
   G.movesLeft--;
   addLog(t('playedDelivery', p.name, mName(ingMeta(kind)), total));
-  triggerEffect('📦', t('fxDelivery'), p.id);
+  triggerEffect('📻', t('fxDelivery'), p.id);
   markNewCards(gainedIds);
   scheduleNewCardExpiry();
   LOCAL_UI.modal = null;
@@ -1633,7 +1645,7 @@ function pickInspectorTarget(targetId) {
   G.movesLeft--;
   const target = G.players.find(pl => pl.id === targetId);
   addLog(t('playedInspector', p.name, target.name));
-  triggerEffect('🕵️', t('fxInspect'), target.id);
+  triggerEffect('🌲', t('fxInspect'), target.id);
   LOCAL_UI.modal = null;
   offerReaction('inspector', p.id, targetId);
 }
@@ -1681,7 +1693,7 @@ function playShoplifter(targetId) {
   const found = findTopBuildCard(target);
   const ingName = found ? (found.card.isWild ? t('wildLabel') : mName(ingMeta(found.card.kind))) : '';
   addLog(t('playedShoplifter', p.name, target.name, ingName));
-  triggerEffect('🥷', t('fxSteal'), target.id);
+  triggerEffect('🐦‍⬛', t('fxSteal'), target.id);
   LOCAL_UI.modal = null;
   offerReaction('shoplifter', p.id, targetId);
 }
@@ -1701,7 +1713,7 @@ function playFly(targetId) {
   G.movesLeft--;
   const target = G.players.find(pl => pl.id === targetId);
   addLog(t('playedFly', p.name, target.name));
-  triggerEffect('🪰', t('fxFly'), target.id);
+  triggerEffect('🐻', t('fxFly'), target.id);
   LOCAL_UI.modal = null;
   offerReaction('fly', p.id, targetId);
 }
@@ -1722,7 +1734,7 @@ function playSwatter() {
   if (slot) slot.fly = false;
   G.movesLeft--;
   addLog(t('playedSwatter', p.name));
-  triggerEffect('🏏💥', t('fxSwat'), p.id);
+  triggerEffect('🔥💥', t('fxSwat'), p.id);
   render();
 }
 
@@ -1746,7 +1758,7 @@ function playGust(targetId) {
   G.movesLeft--;
   const target = G.players.find(pl => pl.id === targetId);
   addLog(t('playedGust', p.name, target.name));
-  triggerEffect('🌬️', t('fxGust'), target.id);
+  triggerEffect('👣', t('fxGust'), target.id);
   LOCAL_UI.modal = null;
   offerReaction('gust', p.id, targetId);
 }
@@ -1940,7 +1952,7 @@ function botPlayInspector(bot, target) {
   G.discardPile.push(card);
   G.movesLeft--;
   addLog(t('playedInspector', bot.name, target.name));
-  triggerEffect('🕵️', t('fxInspect'), target.id);
+  triggerEffect('🌲', t('fxInspect'), target.id);
   offerReaction('inspector', bot.id, target.id);
 }
 
@@ -2259,7 +2271,7 @@ function renderSetup() {
   app.innerHTML = `
     <div class="screen">
       <button class="menu-fab" onclick="openSettingsModal()" title="${t('settingsTitle')}">⚙️</button>
-      <div class="card-emoji">🍔</div>
+      <div class="card-emoji">🏕️</div>
       <h1 class="title">${t('appTitle')}</h1>
       <div class="subtitle">${t('appSubtitle', MIN_PLAYERS, MAX_PLAYERS)}</div>
 
@@ -2427,7 +2439,7 @@ function renderOnlineLobby() {
 
   app.innerHTML = `
     <div class="screen">
-      <div class="card-emoji">🍔</div>
+      <div class="card-emoji">🏕️</div>
       <h1 class="title">${t('appTitle')}</h1>
 
       <div class="setup-card">
@@ -3086,7 +3098,7 @@ function renderMiniPile(kind, count, label, topCard) {
 function renderSeat(pl, isActive, x, y, i, isViewerSeat) {
   const mine = isMe(pl.id);
   const validSum = pl.burgers.filter(b => !b.fly).reduce((s, b) => s + b.value, 0);
-  const burgerStat = mine ? `<span>🍔 ${t('burgerProgress', validSum, WIN_THRESHOLD)}</span>` : '';
+  const burgerStat = mine ? `<span>🏕️ ${t('burgerProgress', validSum, WIN_THRESHOLD)}</span>` : '';
   const avatarEmoji = pl.avatar || (pl.isBot ? '🤖' : SEAT_AVATARS[i % SEAT_AVATARS.length]);
   const avatarClick = mine ? `onclick="openAvatarPicker(${pl.id})"` : '';
   return `
