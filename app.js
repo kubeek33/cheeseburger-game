@@ -58,8 +58,8 @@ const ACTIONS = [
   { kind: 'wild',       ic: '🔧',
     name: { uk: 'Імпровізація', en: 'Improvise' },
     desc: { uk: 'Виклади на свій стіл замість будь-якого ресурсу на вибір.', en: 'Play onto your table as any one resource of your choice.' } },
-  { kind: 'forcedeal',  ic: '💪',
-    name: { uk: 'Право сильнішого', en: 'Right of the Strongest' },
+  { kind: 'forcedeal',  ic: '🦁',
+    name: { uk: 'Закон джунглів', en: 'Law of the Jungle' },
     desc: { uk: 'Віддай непотрібний ресурс і забери будь-який ресурс зі столу суперника — відмовитись не можна.', en: "Give away one resource and take any resource off an opponent's table — they can't refuse." } },
   { kind: 'sayno',      ic: '✋',
     name: { uk: 'Скажи Ні', en: 'Just Say No' },
@@ -269,6 +269,7 @@ const EFFECT_SFX = {
   '📻': 'play',
   '🌲': 'play',
   '🐦‍⬛': 'play',
+  '🦁': 'play',
   '🐻': 'error',
   '🔥💥': 'play',
   '👣': 'play',
@@ -383,9 +384,9 @@ const STRINGS = {
     wildPickTitle: '🔧 Імпровізація — обери, яким ресурсом стане',
     shoplifterTargetTitle: '🐦‍⬛ Ворон-злодій — вкради верхню картку зі столу гравця',
     playerBuildCount: (name, n) => `${name} (${n} на столі)`,
-    forceDealGiveTitle: '💪 Право сильнішого — віддай ресурс',
-    forceDealTargetTitle: '💪 Право сильнішого — обери гравця',
-    forceDealTakeTitle: (name) => `💪 Візьми зі столу гравця ${name}`,
+    forceDealGiveTitle: '🦁 Закон джунглів — віддай ресурс',
+    forceDealTargetTitle: '🦁 Закон джунглів — обери гравця',
+    forceDealTakeTitle: (name) => `🦁 Візьми зі столу гравця ${name}`,
     sayNoPromptTitle: (actorName, cardName) => `${actorName} грає "${cardName}" проти тебе!`,
     sayNoPromptBody: 'Хочеш зіграти "Скажи Ні" й скасувати цю дію?',
     sayNoConfirm: '✋ Скажи Ні!',
@@ -444,7 +445,7 @@ const STRINGS = {
     playedDelivery: (name, ing, total) => `📻 ${name} подає Сигнал SOS: запросив "${ing}" і отримав ${total} карт(и).`,
     playedInspector: (name, target) => `🌲 ${name} грає Лісника проти ${target} і бере 2 карти.`,
     playedShoplifter: (name, target, ing) => `🐦‍⬛ ${name} (Ворон-злодій) краде ${ing} зі столу гравця ${target}.`,
-    playedForceDeal: (name, target, given, taken) => `💪 ${name} застосовує право сильнішого: віддає ${given} гравцю ${target} і забирає ${taken} з його столу.`,
+    playedForceDeal: (name, target, given, taken) => `🦁 ${name} застосовує закон джунглів: віддає ${given} гравцю ${target} і забирає ${taken} з його столу.`,
     playedFly: (name, target) => `🐻 ${name} напускає хижака на прихисток гравця ${target}.`,
     playedSwatter: (name) => `🔥 ${name} відлякує хижака багаттям!`,
     playedGust: (name, target) => `👣 ${name} заплутує слід — хижак тепер у гравця ${target}.`,
@@ -551,9 +552,9 @@ const STRINGS = {
     wildPickTitle: '🔧 Improvise — choose which resource it becomes',
     shoplifterTargetTitle: "🐦‍⬛ Thieving Raven — steal the top card off a player's table",
     playerBuildCount: (name, n) => `${name} (${n} on the table)`,
-    forceDealGiveTitle: '💪 Right of the Strongest — give up a resource',
-    forceDealTargetTitle: '💪 Right of the Strongest — choose a player',
-    forceDealTakeTitle: (name) => `💪 Take from ${name}'s table`,
+    forceDealGiveTitle: '🦁 Law of the Jungle — give up a resource',
+    forceDealTargetTitle: '🦁 Law of the Jungle — choose a player',
+    forceDealTakeTitle: (name) => `🦁 Take from ${name}'s table`,
     sayNoPromptTitle: (actorName, cardName) => `${actorName} plays "${cardName}" against you!`,
     sayNoPromptBody: 'Do you want to play "Just Say No" and cancel it?',
     sayNoConfirm: '✋ Just Say No!',
@@ -612,7 +613,7 @@ const STRINGS = {
     playedDelivery: (name, ing, total) => `📻 ${name} sends an SOS Signal: called "${ing}" and received ${total} card(s).`,
     playedInspector: (name, target) => `🌲 ${name} plays Ranger on ${target} and takes 2 cards.`,
     playedShoplifter: (name, target, ing) => `🐦‍⬛ ${name} (Thieving Raven) steals ${ing} off ${target}'s table.`,
-    playedForceDeal: (name, target, given, taken) => `💪 ${name} invokes Right of the Strongest: gives ${given} to ${target} and takes ${taken} off their table.`,
+    playedForceDeal: (name, target, given, taken) => `🦁 ${name} invokes the Law of the Jungle: gives ${given} to ${target} and takes ${taken} off their table.`,
     playedFly: (name, target) => `🐻 ${name} sends a predator to raid ${target}'s shelter.`,
     playedSwatter: (name) => `🔥 ${name} scares the predator off with a bonfire!`,
     playedGust: (name, target) => `👣 ${name} covers their tracks — the predator now stalks ${target}.`,
@@ -722,7 +723,7 @@ function rulesHtml() {
       <ul>${actionListItems}</ul>
 
       <h4>Скажи Ні</h4>
-      <p>Лісник, Хижак, Слід, Ворон-злодій і Право сильнішого цілять в конкретного
+      <p>Лісник, Хижак, Слід, Ворон-злодій і Закон джунглів цілять в конкретного
       гравця — той може у відповідь зіграти «Скажи Ні», щоб скасувати саму дію
       (картка й хід нападника все одно витрачені, скасовується лише ефект). На «Скажи Ні»
       теж можна відповісти своїм «Скажи Ні» — і так по колу, поки в когось лишається
@@ -789,7 +790,7 @@ function rulesHtml() {
     <ul>${actionListItems}</ul>
 
     <h4>Just Say No</h4>
-    <p>Ranger, Predator, Trail, Thieving Raven, and Right of the Strongest all target one
+    <p>Ranger, Predator, Trail, Thieving Raven, and Law of the Jungle all target one
     specific player — that player can respond with "Just Say No" to cancel the effect
     (the mover's card and move are still spent; only the payoff is cancelled). Just Say
     No can itself be answered with another Just Say No, and so on for as long as
@@ -1485,7 +1486,7 @@ function confirmForceDeal(kind) {
   const target = G.players.find(pl => pl.id === m.targetId);
   const givenMeta = ingMeta((p.hand.find(c => c.id === m.giveCardId) || {}).kind);
   addLog(t('playedForceDeal', p.name, target.name, givenMeta ? mName(givenMeta) : '?', mName(ingMeta(kind))));
-  triggerEffect('🤝', null, target.id);
+  triggerEffect('🦁', null, target.id);
   LOCAL_UI.modal = null;
   offerReaction('forcedeal', p.id, m.targetId, { giveCardId: m.giveCardId, takeKind: kind });
 }
@@ -1909,7 +1910,7 @@ function botDoOneMove(bot) {
           G.discardPile.push(card);
           G.movesLeft--;
           addLog(t('playedForceDeal', bot.name, target.name, mName(ingMeta(giveCard.kind)), mName(ingMeta(takeKind))));
-          triggerEffect('🤝', null, target.id);
+          triggerEffect('🦁', null, target.id);
           offerReaction('forcedeal', bot.id, target.id, { giveCardId: giveCard.id, takeKind });
           return true;
         }
