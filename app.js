@@ -1083,6 +1083,7 @@ function newGame(names, options) {
   const burgerPile = shuffle(buildBurgerPile());
   const players = names.map((name, i) => ({ id: i, name, avatar: avatars[i] || null, hand: [], burgers: [], builds: [], isBot: !!isBotFlags[i], difficulty }));
   LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null, logToasts: [], lastLogSeq: undefined, logToastTimer: null, animatedIds: new Set(), logHistoryOpen: false, avatarModal: null };
+  lastEndRenderKey = null;
   G = {
     players, drawPile: deck, discardPile: [], burgerPile,
     currentPlayerIndex: 0, movesLeft: 3,
@@ -1130,9 +1131,14 @@ function renderEffectToast() {
   if (!G || !G.effect || G.effect.targetId != null) return '';
   return `<div class="fx-toast" data-key="${G.effect.key}">${fxToastHtml()}</div>`;
 }
+/* The predator gets its own "thrown at you" arc instead of the generic
+   gentle pop-in every other effect uses — it's the one card that's
+   explicitly an attack landing on a specific target, so it should read
+   as something being lobbed at them, not just quietly appearing. */
 function renderSeatEffectToast(pl) {
   if (!G || !G.effect || G.effect.targetId !== pl.id) return '';
-  return `<div class="fx-toast fx-toast-seat" data-key="${G.effect.key}">${fxToastHtml()}</div>`;
+  const thrown = G.effect.emoji === '🐻' ? ' fx-throw' : '';
+  return `<div class="fx-toast fx-toast-seat${thrown}" data-key="${G.effect.key}">${fxToastHtml()}</div>`;
 }
 
 function ensureDrawPile(n) {
@@ -3375,6 +3381,7 @@ function generateConfettiHtml(n) {
   return html;
 }
 
+let lastEndRenderKey = null;
 function renderEnd() {
   /* The end screen is static once shown (G.winner/endReason don't change
      after the game is over), but renderLocal() still gets called again for
@@ -3382,8 +3389,12 @@ function renderEnd() {
      still in flight, an online-sync echo) — each one used to rebuild this
      whole screen from scratch with a fresh random confetti layout, which
      looked like the celebration animation restarting/stuttering a few
-     times. Skip the rebuild if it's already showing. */
-  if (app.querySelector('.confetti-container')) return;
+     times. Skip the rebuild only if NOTHING that should actually change the
+     screen (winner, reason, language) has changed since last time — a
+     language toggle, for instance, still needs to go through. */
+  const endKey = G.winner.map(w => w.id).join(',') + '|' + G.endReason + '|' + LANG;
+  if (app.querySelector('.confetti-container') && lastEndRenderKey === endKey) return;
+  lastEndRenderKey = endKey;
   const winners = G.winner;
   const rows = [...G.players].sort((a, b) => {
     const sa = a.burgers.filter(x => !x.fly).reduce((s, x) => s + x.value, 0);
