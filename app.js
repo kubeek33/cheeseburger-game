@@ -124,28 +124,19 @@ const Sfx = (() => {
     osc.stop(start + dur + 0.02);
   }
 
-  // A low growling swell — two detuned oscillators sweeping down/up/down,
-  // the closest a simple synth oscillator gets to a bear roar.
+  // Real recorded bear growl (Universfield, Pixabay Content License —
+  // free for use) instead of a synthesized tone — the only SFX in this
+  // game backed by an actual audio file rather than oscillators. Cloning
+  // the element per play lets rapid-fire triggers overlap instead of
+  // cutting each other off.
+  const bearGrowlSrc = 'assets/sounds/bear-growl.mp3';
   function growl() {
-    const c = getAudioCtx();
-    if (!c || muted) return;
-    const start = c.currentTime;
-    [0, 7].forEach(detune => {
-      const osc = c.createOscillator();
-      const gain = c.createGain();
-      osc.type = 'sawtooth';
-      osc.detune.value = detune;
-      osc.frequency.setValueAtTime(170, start);
-      osc.frequency.exponentialRampToValueAtTime(85, start + 0.32);
-      osc.frequency.exponentialRampToValueAtTime(125, start + 0.48);
-      osc.frequency.exponentialRampToValueAtTime(65, start + 0.72);
-      gain.gain.setValueAtTime(0, start);
-      gain.gain.linearRampToValueAtTime(0.13, start + 0.05);
-      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.78);
-      osc.connect(gain).connect(c.destination);
-      osc.start(start);
-      osc.stop(start + 0.8);
-    });
+    if (muted) return;
+    try {
+      const a = new Audio(bearGrowlSrc);
+      a.volume = 0.7;
+      a.play().catch(() => {});
+    } catch (e) {}
   }
 
   const SOUNDS = {
