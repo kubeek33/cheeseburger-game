@@ -712,18 +712,32 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 /* In-progress burger build, laid out face-up on the table (always public —
    see renderBuildRow). The most recent card ("top") gets a highlighted
    ring since it's the only one Shoplifter can steal. */
-.build-row { display: flex; align-items: center; gap: 3px; margin-top: 4px; flex-wrap: nowrap; }
+/* Wraps (not nowrap) — now that every pile always shows its full recipe
+   (up to 7 slots including ghosts, see renderBuildRow), a single row at
+   full chip size would overflow the narrow seat-info column. */
+.build-row-wrap { margin-top: 4px; }
+.build-recipe-name { font-size: 9px; color: #d9c4a3; opacity: 0.85; text-align: center; }
+.build-row { display: flex; align-items: center; justify-content: center; gap: 3px; row-gap: 3px; margin-top: 2px; flex-wrap: wrap; max-width: 100%; }
 .build-chip {
-  width: 22px; height: 22px;
+  width: 20px; height: 20px;
   border-radius: 50%;
   background: var(--panel-light);
   display: flex; align-items: center; justify-content: center;
-  font-size: 12px;
+  font-size: 11px;
   flex-shrink: 0;
   box-shadow: 0 1px 3px rgba(0,0,0,0.35);
 }
 .build-chip.wild { background: var(--accent-2); }
 .build-chip.top { box-shadow: 0 0 0 2px var(--accent-2), 0 1px 3px rgba(0,0,0,0.35); }
+/* Ghost = still needed. Same icon as the real card so it doubles as a
+   legend (no separate "here's what X looks like" step needed), just
+   faded and outlined instead of solid. */
+.build-chip.ghost {
+  background: none;
+  border: 1.5px dashed rgba(217,196,163,0.45);
+  opacity: 0.55;
+  box-shadow: none;
+}
 .build-count { font-size: 10px; color: #d9c4a3; margin-left: 2px; white-space: nowrap; }
 
 .moves-indicator {
@@ -1119,6 +1133,10 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   padding: 12px 14px;
 }
 .choice-btn:hover { filter: brightness(1.2); }
+.recipe-choice-btn { display: flex; flex-direction: column; gap: 4px; }
+.recipe-choice-name { font-weight: 700; }
+.recipe-choice-count { font-weight: 400; color: #d9c4a3; font-size: 12px; }
+.recipe-choice-icons { font-size: 15px; letter-spacing: 1px; }
 .kind-picker { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
 .kind-chip {
   background: var(--panel-light);
