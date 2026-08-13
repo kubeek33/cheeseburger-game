@@ -450,7 +450,7 @@ const STRINGS = {
     playedSwatter: (name) => `🔥 ${name} відлякує хижака багаттям!`,
     playedGust: (name, target) => `👣 ${name} заплутує слід — хижак тепер у гравця ${target}.`,
     turnEnded: (name) => `--- Хід гравця ${name} завершено ---`,
-    winByThreshold: (name, n) => `${name} збудував ${n}+ прихистків і перемагає!`,
+    winByThreshold: (name) => `${name} збудував табір і готовий вижити в дикій природі!`,
     pileDepleted: 'Прихистки закінчились!',
     reasonNoMoves: 'Не залишилось ходів у цьому ході',
     reasonGrandmaAlready: 'Дідусеві навички вже діють для поточного прихистку',
@@ -618,7 +618,7 @@ const STRINGS = {
     playedSwatter: (name) => `🔥 ${name} scares the predator off with a bonfire!`,
     playedGust: (name, target) => `👣 ${name} covers their tracks — the predator now stalks ${target}.`,
     turnEnded: (name) => `--- ${name}'s turn ended ---`,
-    winByThreshold: (name, n) => `${name} built ${n}+ shelters and wins!`,
+    winByThreshold: (name) => `${name} built their camp and is ready to survive the wild!`,
     pileDepleted: 'The shelter pile ran out!',
     reasonNoMoves: 'No moves left this turn',
     reasonGrandmaAlready: "Grandpa's Survival Skills are already active for this shelter",
@@ -1517,7 +1517,7 @@ function afterBurgerMade() {
   if (validSum >= WIN_THRESHOLD) {
     G.phase = 'end';
     G.winner = [p];
-    G.endReason = t('winByThreshold', p.name, WIN_THRESHOLD);
+    G.endReason = t('winByThreshold', p.name);
     Sfx.play('win');
     render();
     return;
