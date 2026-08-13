@@ -75,7 +75,7 @@ const ACTION_COUNTS = { foodtruck: 4, delivery: 4, grandma: 3, inspector: 4, sho
 const INGREDIENT_COUNT_PER_KIND = 12;
 const BURGER_PILE_SINGLES = 10; // value-1 cards
 const BURGER_PILE_DOUBLES = 8;  // value-2 cards
-const WIN_THRESHOLD = 3; // lowered from 4 — piles now need 7 cards (was 5) since Rope/Medkit require 2 copies each
+const WIN_THRESHOLD = 5;
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 6;
 
@@ -124,6 +124,30 @@ const Sfx = (() => {
     osc.stop(start + dur + 0.02);
   }
 
+  // A low growling swell — two detuned oscillators sweeping down/up/down,
+  // the closest a simple synth oscillator gets to a bear roar.
+  function growl() {
+    const c = getAudioCtx();
+    if (!c || muted) return;
+    const start = c.currentTime;
+    [0, 7].forEach(detune => {
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.type = 'sawtooth';
+      osc.detune.value = detune;
+      osc.frequency.setValueAtTime(170, start);
+      osc.frequency.exponentialRampToValueAtTime(85, start + 0.32);
+      osc.frequency.exponentialRampToValueAtTime(125, start + 0.48);
+      osc.frequency.exponentialRampToValueAtTime(65, start + 0.72);
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.13, start + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.78);
+      osc.connect(gain).connect(c.destination);
+      osc.start(start);
+      osc.stop(start + 0.8);
+    });
+  }
+
   const SOUNDS = {
     draw:     () => tone(520, 0, 0.09, 'triangle', 0.11),
     play:     () => { tone(660, 0, 0.07, 'square', 0.07); tone(880, 0.05, 0.09, 'square', 0.07); },
@@ -133,6 +157,7 @@ const Sfx = (() => {
     win:      () => { [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, i * 0.09, 0.3, 'triangle', 0.13)); },
     click:    () => tone(440, 0, 0.04, 'square', 0.05),
     error:    () => { tone(220, 0, 0.1, 'sawtooth', 0.08); tone(180, 0.09, 0.14, 'sawtooth', 0.08); },
+    predator: growl,
   };
 
   return {
@@ -270,9 +295,9 @@ const EFFECT_SFX = {
   '🌲': 'play',
   '🐦‍⬛': 'play',
   '🦁': 'play',
-  '🐻': 'error',
+  '🐻': 'predator',
   '🔥💥': 'play',
-  '👣': 'play',
+  '👣': 'predator',
 };
 
 function pickRandomBotNames(count) {
@@ -1135,10 +1160,17 @@ function renderEffectToast() {
    gentle pop-in every other effect uses — it's the one card that's
    explicitly an attack landing on a specific target, so it should read
    as something being lobbed at them, not just quietly appearing. */
+/* Predator (🐻) and Trail (👣) both read as the predator actively lunging
+   at this seat (Trail is literally "redirect the predator onto someone
+   else"), so both get the thrown-in arc instead of the generic pop. Trail
+   additionally gets a quick claw-mark slash across the toast — it's the
+   one that's framed as "the predator strikes here now". */
 function renderSeatEffectToast(pl) {
   if (!G || !G.effect || G.effect.targetId !== pl.id) return '';
-  const thrown = G.effect.emoji === '🐻' ? ' fx-throw' : '';
-  return `<div class="fx-toast fx-toast-seat${thrown}" data-key="${G.effect.key}">${fxToastHtml()}</div>`;
+  const isAttack = G.effect.emoji === '🐻' || G.effect.emoji === '👣';
+  const extra = (isAttack ? ' fx-throw' : '') + (G.effect.emoji === '👣' ? ' fx-claw' : '');
+  const claws = G.effect.emoji === '👣' ? '<span class="fx-claw-marks" aria-hidden="true"></span>' : '';
+  return `<div class="fx-toast fx-toast-seat${extra}" data-key="${G.effect.key}">${fxToastHtml()}${claws}</div>`;
 }
 
 function ensureDrawPile(n) {
@@ -3154,7 +3186,7 @@ function renderSeat(pl, isActive, x, y, i, isViewerSeat) {
           ${pl.burgers.map(b => `<div class="burger-slot ${b.fly ? 'fly' : ''}">
               <img class="burger-slot-img" src="${BACK_ART.burger}" alt="" draggable="false" />
               ${mine ? `<div class="card-tooltip">${b.fly ? t('burgerTooltipFly', b.value) : t('burgerTooltip', b.value)}</div>` : ''}
-              ${b.fly ? '<span class="burger-slot-fly">🪰</span>' : ''}
+              ${b.fly ? '<span class="burger-slot-fly">🐻</span>' : ''}
             </div>`).join('')}
         </div>
         ${renderBuildRow(pl)}

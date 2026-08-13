@@ -417,6 +417,30 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   100% { opacity: 0; transform: translate(-50%, -50%) scale(0.9) translateY(-14px); }
 }
 
+/* Trail-only: three claw-mark slashes flash across the toast right as it
+   "lands" (timed to the throw's overshoot/settle around 50-65%), so it
+   reads as the predator actively striking this seat, not just a footprint
+   icon quietly appearing. */
+.fx-claw-marks {
+  position: absolute;
+  inset: -14px -22px;
+  pointer-events: none;
+  background:
+    linear-gradient(105deg, transparent 44%, rgba(255,255,255,0.9) 47%, rgba(255,255,255,0.9) 50%, transparent 53%),
+    linear-gradient(105deg, transparent 53%, rgba(255,255,255,0.9) 56%, rgba(255,255,255,0.9) 59%, transparent 62%),
+    linear-gradient(105deg, transparent 62%, rgba(255,255,255,0.9) 65%, rgba(255,255,255,0.9) 68%, transparent 71%);
+  opacity: 0;
+  transform: scale(0.6) rotate(-10deg);
+  animation: fx-claw-slash 1.1s ease-out both;
+}
+@keyframes fx-claw-slash {
+  0%, 42% { opacity: 0; transform: scale(0.6) rotate(-10deg); }
+  52% { opacity: 1; transform: scale(1.2) rotate(-4deg); }
+  64% { opacity: 1; transform: scale(1) rotate(0deg); }
+  85% { opacity: 0.85; }
+  100% { opacity: 0; transform: scale(0.95) rotate(0deg); }
+}
+
 /* Sized as percentages of the table (not fixed px) so the three piles
    always fit in a single row and never wrap into the seats around them,
    no matter how small or large the table itself ends up being. */
