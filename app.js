@@ -327,10 +327,7 @@ function mDesc(meta) { return meta.desc[LANG]; }
 const STRINGS = {
   uk: {
     appTitle: 'ДИКА ПРИРОДА: ВИЖИВАННЯ',
-    appSubtitle: (min, max) => `Настільна карткова гра для ${min}–${max} гравців · hotseat`,
-    howManyPlayers: 'Скільки гравців?',
-    playerNames: 'Імена гравців',
-    playerPlaceholder: (i) => `Гравець ${i}`,
+    appSubtitle: (min, max) => `Карткова гра для ${min}–${max} гравців — проти ботів або онлайн`,
     startGame: 'Почати гру 🏕️',
     rulesBtn: '📖 Правила гри',
     rulesTooltip: 'Правила',
@@ -340,7 +337,6 @@ const STRINGS = {
     avatarPickerTitle: '🙂 Обрати аватарку',
     avatarPickerConfirm: 'Зберегти',
     langToggle: 'EN',
-    modeHotseat: '👥 Локально (з друзями)',
     modeBots: '🤖 Проти ботів',
     modeOnline: '🌐 Онлайн',
     yourName: "Твоє ім'я",
@@ -384,15 +380,8 @@ const STRINGS = {
     fxDelivery: 'SOS!',
     fxInspect: 'Перевірка!',
     fxTrade: 'Обмін!',
-    passInfoBanner: 'Пристрій передається по колу. Перед кожним ходом на екрані буде заставка «Передай пристрій...» — це знак віддати телефон/ноутбук наступному гравцю.',
     rulesTitle: '📖 Правила гри «Дика Природа: Виживання»',
     gotIt: 'Зрозуміло',
-    passHintDefault: 'Переконайся, що інші гравці не бачать екран.',
-    passHintStart: 'Настав твій хід. Переконайся, що інші не бачать екран, і тисни, щоб побачити свою руку.',
-    passHintTradeRespond: (name) => `Гравець ${name} пропонує тобі обмін. Подивись пропозицію приватно.`,
-    passHintTradeBack: 'Обмін завершено. Поверни пристрій собі, щоб продовжити хід.',
-    passToPlayer: (name) => `Передай пристрій гравцю<br>«${name}»`,
-    imPlayerShowHand: (name) => `Я — ${name}, показати мою руку`,
     tradeOfferTitle: '🤝 Пропозиція обміну',
     tradeOffersYou: (name) => `${name} пропонує тобі цю карту:`,
     tradeChooseResponse: 'Обери свою карту у відповідь, або відхили пропозицію:',
@@ -496,10 +485,7 @@ const STRINGS = {
   },
   en: {
     appTitle: 'WILD SURVIVAL',
-    appSubtitle: (min, max) => `A tabletop card game for ${min}–${max} players · hotseat`,
-    howManyPlayers: 'How many players?',
-    playerNames: 'Player names',
-    playerPlaceholder: (i) => `Player ${i}`,
+    appSubtitle: (min, max) => `A card game for ${min}–${max} players — vs bots or online`,
     startGame: 'Start Game 🏕️',
     rulesBtn: '📖 Rules',
     rulesTooltip: 'Rules',
@@ -509,7 +495,6 @@ const STRINGS = {
     avatarPickerTitle: '🙂 Choose an avatar',
     avatarPickerConfirm: 'Save',
     langToggle: 'UA',
-    modeHotseat: '👥 Local (pass & play)',
     modeBots: '🤖 Vs bots',
     modeOnline: '🌐 Online',
     yourName: 'Your name',
@@ -553,15 +538,8 @@ const STRINGS = {
     fxDelivery: 'SOS!',
     fxInspect: 'Inspected!',
     fxTrade: 'Traded!',
-    passInfoBanner: 'The device is passed around the table. Before every turn you’ll see a "Pass the device..." screen — that’s the cue to hand the phone/laptop to the next player.',
     rulesTitle: '📖 Wild Survival — Rules',
     gotIt: 'Got it',
-    passHintDefault: "Make sure other players can't see the screen.",
-    passHintStart: "It's your turn. Make sure no one else can see the screen, then tap to reveal your hand.",
-    passHintTradeRespond: (name) => `${name} is offering you a trade. Check the offer privately.`,
-    passHintTradeBack: 'The trade is done. Pass the device back to yourself to continue your turn.',
-    passToPlayer: (name) => `Pass the device to<br>"${name}"`,
-    imPlayerShowHand: (name) => `I'm ${name}, show my hand`,
     tradeOfferTitle: '🤝 Trade Offer',
     tradeOffersYou: (name) => `${name} offers you this card:`,
     tradeChooseResponse: 'Choose a card to trade back, or decline the offer:',
@@ -1231,27 +1209,6 @@ function goToPassCover(playerIndex, purpose) {
   G.passTarget = playerIndex;
   G.passPurpose = purpose;
   LOCAL_UI.modal = null;
-  render();
-}
-
-function confirmPassReveal() {
-  const purpose = G.passPurpose;
-  if (purpose === 'startTurn') {
-    G.currentPlayerIndex = G.passTarget;
-    startTurnDraw();
-    G.phase = 'game';
-    Sfx.play('turn');
-  } else if (purpose === 'tradeRespond') {
-    G.phase = 'tradeRespond';
-  } else if (purpose === 'sayNoRespond') {
-    G.phase = 'sayNoRespond';
-  } else if (purpose === 'applyReaction') {
-    applyReaction();
-    return;
-  } else if (purpose === 'tradeBack' || purpose === 'backToGame') {
-    G.phase = 'game';
-    scheduleNewCardExpiry();
-  }
   render();
 }
 
@@ -2315,24 +2272,19 @@ function doLocalRender() {
   if (G.phase === 'end') { renderEnd(); return; }
   if (G.phase === 'pass') {
     if (G.vsBots) { resolvePassAutomatically(); return; }
-    if (G.online) {
-      // Only the host resolves this transition (draws cards, advances the
-      // turn) — every device's listener sees the same 'pass' snapshot, so
-      // if all of them ran the resolver they'd race and double-draw.
-      if (ONLINE.isHost) { resolvePassAutomatically(); return; }
-      renderOnlineWaiting(t('waitingTitle')); return;
-    }
-    renderPassCover(); return;
+    // Only the host resolves this transition (draws cards, advances the
+    // turn) — every device's listener sees the same 'pass' snapshot, so
+    // if all of them ran the resolver they'd race and double-draw.
+    if (ONLINE.isHost) { resolvePassAutomatically(); return; }
+    renderOnlineWaiting(t('waitingTitle')); return;
   }
   if (G.phase === 'tradeRespond') {
     if (G.vsBots) { resolveTradeRespondAutomatically(); return; }
-    if (G.online) { renderOnlineTradeRespond(); return; }
-    renderTradeRespond(); return;
+    renderOnlineTradeRespond(); return;
   }
   if (G.phase === 'sayNoRespond') {
     if (G.vsBots) { resolveSayNoRespondAutomatically(); return; }
-    if (G.online) { renderOnlineSayNoRespond(); return; }
-    renderSayNoRespond(); return;
+    renderOnlineSayNoRespond(); return;
   }
   if (G.online) { renderOnlineGame(); return; }
   renderGame();
@@ -2418,10 +2370,8 @@ function renderBotThinking(bot, message) {
 
 /* ---- Setup screen ---- */
 let setupState = {
-  mode: 'hotseat', // 'hotseat' | 'bots' | 'online'
+  mode: 'bots', // 'bots' | 'online'
   count: 4,
-  names: ['', '', '', ''],
-  avatars: ['', '', '', ''],
   yourName: '',
   yourAvatar: '',
   difficulty: 'medium',
@@ -2430,11 +2380,6 @@ let setupState = {
 };
 
 function renderSetup() {
-  while (setupState.names.length < setupState.count) setupState.names.push('');
-  while (setupState.names.length > setupState.count) setupState.names.pop();
-  while (setupState.avatars.length < setupState.count) setupState.avatars.push('');
-  while (setupState.avatars.length > setupState.count) setupState.avatars.pop();
-
   app.innerHTML = `
     <div class="screen">
       <button class="menu-fab" onclick="openSettingsModal()" title="${t('settingsTitle')}">⚙️</button>
@@ -2450,16 +2395,13 @@ function renderSetup() {
       <button class="btn-gold btn-block rules-cta" onclick="openRules()">${t('rulesBtn')}</button>
 
       <div class="mode-picker">
-        <button class="lang-btn ${setupState.mode === 'hotseat' ? 'active' : ''}" onclick="setupSetMode('hotseat')">${t('modeHotseat')}</button>
         <button class="lang-btn ${setupState.mode === 'bots' ? 'active' : ''}" onclick="setupSetMode('bots')">${t('modeBots')}</button>
         <button class="lang-btn ${setupState.mode === 'online' ? 'active' : ''}" onclick="setupSetMode('online')">${t('modeOnline')}</button>
       </div>
 
       <div class="setup-card">
-        ${setupState.mode === 'bots' ? renderSetupBots() : setupState.mode === 'online' ? renderSetupOnline() : renderSetupHotseat()}
+        ${setupState.mode === 'bots' ? renderSetupBots() : renderSetupOnline()}
       </div>
-
-      <div class="info-banner">${setupState.mode === 'hotseat' ? t('passInfoBanner') : ''}</div>
     </div>
     ${renderRulesModal()}
     ${renderSetupAvatarPickerModal()}
@@ -2470,7 +2412,7 @@ function renderSetupOnline() {
   return `
     <h3>${t('yourName')}</h3>
     <div class="name-avatar-row">
-      <button type="button" class="avatar-input avatar-input-sm" onclick="openSetupAvatarPicker('you')">${escapeHtml(setupState.yourAvatar) || '🙂'}</button>
+      <button type="button" class="avatar-input avatar-input-sm" onclick="openSetupAvatarPicker()">${escapeHtml(setupState.yourAvatar) || '🙂'}</button>
       <input type="text" placeholder="${t('yourNamePlaceholder')}" value="${escapeHtml(setupState.yourName)}"
         oninput="setupSetYourName(this.value)" />
     </div>
@@ -2490,35 +2432,11 @@ function renderSetupOnline() {
   `;
 }
 
-function renderSetupHotseat() {
-  return `
-    <h3>${t('howManyPlayers')}</h3>
-    <div class="stepper">
-      <button onclick="setupChangeCount(-1)">−</button>
-      <div class="count">${setupState.count}</div>
-      <button onclick="setupChangeCount(1)">+</button>
-    </div>
-
-    <h3>${t('playerNames')}</h3>
-    <div class="name-list">
-      ${setupState.names.map((n, i) => `
-        <div class="name-avatar-row">
-          <button type="button" class="avatar-input avatar-input-sm" onclick="openSetupAvatarPicker(${i})">${escapeHtml(setupState.avatars[i] || SEAT_AVATARS[i % SEAT_AVATARS.length])}</button>
-          <input type="text" placeholder="${t('playerPlaceholder', i + 1)}" value="${escapeHtml(n)}"
-            oninput="setupSetName(${i}, this.value)" />
-        </div>
-      `).join('')}
-    </div>
-
-    <button class="btn-primary btn-block" onclick="setupStart()">${t('startGame')}</button>
-  `;
-}
-
 function renderSetupBots() {
   return `
     <h3>${t('yourName')}</h3>
     <div class="name-avatar-row">
-      <button type="button" class="avatar-input avatar-input-sm" onclick="openSetupAvatarPicker('you')">${escapeHtml(setupState.yourAvatar) || '🙂'}</button>
+      <button type="button" class="avatar-input avatar-input-sm" onclick="openSetupAvatarPicker()">${escapeHtml(setupState.yourAvatar) || '🙂'}</button>
       <input type="text" placeholder="${t('yourNamePlaceholder')}" value="${escapeHtml(setupState.yourName)}"
         oninput="setupSetYourName(this.value)" />
     </div>
@@ -2547,15 +2465,16 @@ function setupChangeCount(delta) {
   setupState.count = Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, setupState.count + delta));
   renderSetup();
 }
-function setupSetName(i, val) { setupState.names[i] = val; }
 function setupSetYourName(val) { setupState.yourName = val; }
 function setupSetDifficulty(d) { setupState.difficulty = d; renderSetup(); }
 
 /* Setup-screen avatar pick: click-to-choose only (no typing) — a single
    emoji symbol, picked from presets, same spirit as openAvatarPicker() but
-   writing into setupState (before any G.players exist) instead of G. */
-function openSetupAvatarPicker(target) {
-  LOCAL_UI.setupAvatarPick = { target, draft: null };
+   writing into setupState.yourAvatar (before any G.players exist) instead
+   of G. Only "you" ever picks here now — vs-bots names its bots itself,
+   and online players each pick their own avatar in the room lobby. */
+function openSetupAvatarPicker() {
+  LOCAL_UI.setupAvatarPick = { draft: null };
   renderSetup();
 }
 function closeSetupAvatarPicker() { LOCAL_UI.setupAvatarPick = null; renderSetup(); }
@@ -2567,14 +2486,9 @@ function confirmSetupAvatarPick() {
   const m = LOCAL_UI.setupAvatarPick;
   const emoji = m.draft || '';
   if (!emoji) return;
-  if (m.target === 'you') setupState.yourAvatar = emoji;
-  else setupState.avatars[m.target] = emoji;
+  setupState.yourAvatar = emoji;
   LOCAL_UI.setupAvatarPick = null;
   renderSetup();
-}
-function setupStart() {
-  const names = setupState.names.map((n, i) => n.trim() || t('playerPlaceholder', i + 1));
-  newGame(names, { avatars: setupState.avatars });
 }
 function setupStartVsBots() {
   const human = setupState.yourName.trim() || t('yourNamePlaceholder');
@@ -2636,29 +2550,6 @@ function copyRoomLink() {
 }
 
 /* ---- Pass cover screen ---- */
-function renderPassCover() {
-  const target = G.players[G.passTarget];
-  const purpose = G.passPurpose;
-  let hint = t('passHintDefault');
-  if (purpose === 'startTurn') hint = t('passHintStart');
-  if (purpose === 'tradeRespond') hint = t('passHintTradeRespond', G.players.find(p => p.id === G.tradeState.fromId).name);
-  if (purpose === 'tradeBack') hint = t('passHintTradeBack');
-
-  app.innerHTML = `
-    ${menuButtonHtml()}
-    <div class="screen">
-      <div class="pass-cover">
-        <div class="icon">📱➡️</div>
-        <div class="who">${t('passToPlayer', escapeHtml(target.name))}</div>
-        <div class="hint">${hint}</div>
-        <button class="btn-primary" onclick="confirmPassReveal()">${t('imPlayerShowHand', escapeHtml(target.name))}</button>
-      </div>
-    </div>
-    ${renderMainMenuModal()}
-    ${renderRulesModal()}
-  `;
-}
-
 /* ---- Trade respond screen (target's private view) ---- */
 function renderTradeRespond() {
   const ts = G.tradeState;
@@ -3373,8 +3264,7 @@ function renderAvatarPickerModal() {
 function renderSetupAvatarPickerModal() {
   const m = LOCAL_UI.setupAvatarPick;
   if (!m) return '';
-  const existing = m.target === 'you' ? setupState.yourAvatar : setupState.avatars[m.target];
-  const current = m.draft != null ? m.draft : (existing || '');
+  const current = m.draft != null ? m.draft : (setupState.yourAvatar || '');
   return wrapModal(t('avatarPickerTitle'), `
     <div class="avatar-presets">
       ${SEAT_AVATARS.map(e => `<button class="avatar-preset ${current === e ? 'active' : ''}" onclick="setSetupAvatarDraft('${e}')">${e}</button>`).join('')}

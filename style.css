@@ -269,22 +269,6 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   line-height: 1;
 }
 
-/* Pass device cover */
-.pass-cover {
-  flex: 1;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  text-align: center;
-  min-height: 70vh;
-}
-.pass-cover .who { font-size: 26px; font-weight: 800; color: var(--accent-2); }
-.pass-cover .hint { color: #d9c4a3; font-size: 14px; max-width: 320px; }
-.pass-cover .icon { font-size: 64px; }
-
 /* Game board — fills the viewport with no page scroll: the table region is
    the only flexible piece (flex:1), so it expands to soak up whatever
    vertical space isn't needed by the header/actions/hand, which stay
