@@ -21,25 +21,12 @@ const INGREDIENTS = [
   { kind: 'tomato',  ic: '🩹', name: { uk: 'Аптечка',  en: 'Medkit' } },
 ];
 
-/* 5 different recipes, 5-8 cards each — the player picks which one to
-   start whenever they play a resource that doesn't fit an already-started
-   pile (see openRecipeModal/confirmRecipeChoice). All reward the same
-   random 1-or-2 shelter card on completion regardless of size — the
-   payoff for picking a bigger recipe isn't a bigger prize, it's that it's
-   the one that happens to match what's already in your hand. Grandma's
-   Recipe bypasses whatever recipe a pile is on (any 3 distinct kinds, 1
-   each), so it stays a flat shortcut no matter which one you picked. */
+/* One fixed shelter recipe — one of each of the 5 resources. Grandma's
+   Recipe bypasses it on whichever pile it's played on (any 3 distinct
+   kinds, 1 each), so it stays a flat shortcut regardless. */
 const RECIPES = [
-  { id: 'basic',     name: { uk: 'Базовий набір', en: 'Basic Kit' },
-    req: { bun: 1, patty: 1, cheese: 1, lettuce: 1, tomato: 1 } },        // 5
-  { id: 'logcabin',  name: { uk: 'Зруб', en: 'Log Cabin' },
-    req: { bun: 2, patty: 1, cheese: 1, lettuce: 1, tomato: 1 } },        // 6
-  { id: 'reservoir', name: { uk: 'Водосховище', en: 'Reservoir' },
-    req: { bun: 1, patty: 2, cheese: 1, lettuce: 2, tomato: 1 } },        // 7
-  { id: 'fullcamp',  name: { uk: 'Повний табір', en: 'Full Camp' },
-    req: { bun: 1, patty: 1, cheese: 1, lettuce: 2, tomato: 2 } },        // 7
-  { id: 'fortress',  name: { uk: 'Фортеця', en: 'Fortress' },
-    req: { bun: 2, patty: 1, cheese: 2, lettuce: 1, tomato: 2 } },        // 8
+  { id: 'basic', name: { uk: 'Прихисток', en: 'Shelter' },
+    req: { bun: 1, patty: 1, cheese: 1, lettuce: 1, tomato: 1 } },
 ];
 function getRecipe(id) { return RECIPES.find(r => r.id === id) || RECIPES[0]; }
 
@@ -368,7 +355,6 @@ const STRINGS = {
     burgerRevealText: (v) => `🏕️ Тобі випав прихисток номіналом ${v}!`,
     wildLabel: 'імпровізація',
     wildPickTitle: '🔧 Імпровізація — обери, яким ресурсом стане',
-    chooseRecipeTitle: '🏕️ Новий прихисток — обери рецепт',
     shoplifterTargetTitle: '🐦‍⬛ Ворон-злодій — вкради верхню картку зі столу гравця',
     playerBuildCount: (name, n) => `${name} (${n} на столі)`,
     forceDealGiveTitle: '🦁 Закон джунглів — віддай ресурс',
@@ -528,7 +514,6 @@ const STRINGS = {
     burgerRevealText: (v) => `🏕️ You got a value-${v} shelter!`,
     wildLabel: 'improvise',
     wildPickTitle: '🔧 Improvise — choose which resource it becomes',
-    chooseRecipeTitle: '🏕️ New shelter — pick a recipe',
     shoplifterTargetTitle: "🐦‍⬛ Thieving Raven — steal the top card off a player's table",
     playerBuildCount: (name, n) => `${name} (${n} on the table)`,
     forceDealGiveTitle: '🦁 Law of the Jungle — give up a resource',
@@ -671,20 +656,13 @@ function rulesHtml() {
       </ul>
       ${cardGallery}
 
-      <h4>5 рецептів прихистку</h4>
-      <p>Прихисток — це не "будь-які 5 карток". Є <b>5 різних рецептів</b>, від
-      5 до 8 карток кожен, і коли граєш ресурс, яким не можеш продовжити вже
-      розпочатий прихисток, ти сам обираєш, який рецепт починаєш. Нагорода
-      завжди та сама (випадкова картка прихистку 1 чи 2) незалежно від
-      рецепта — вибір лише в тому, який набір найкраще збігається з тим, що
-      вже на руках:</p>
-      <ul>${RECIPES.map(r => {
-        const total = Object.values(r.req).reduce((s, n) => s + n, 0);
-        const parts = INGREDIENTS.filter(i => (r.req[i.kind] || 0) > 0).map(i => `${r.req[i.kind]} ${mName(i)}`).join(', ');
-        return `<li><b>${mName(r)}</b> (${total} карток) — ${parts}.</li>`;
-      }).join('')}</ul>
-      <p>Дідусеві навички завжди спрощують поточний прихисток до 3 будь-яких
-      різних ресурсів, незалежно від того, який рецепт на ньому обрано.</p>
+      <h4>Рецепт прихистку</h4>
+      <p>Прихисток — це <b>по 1 картці кожного з 5 видів ресурсів</b> (5 карток
+      усього). Ресурс, що не підходить до вже розпочатого прихистку, починає
+      новий. Нагорода за завершення — випадкова картка прихистку номіналом
+      1 чи 2.</p>
+      <p>Дідусеві навички спрощують поточний прихисток до 3 будь-яких різних
+      ресурсів замість повного набору з 5.</p>
 
       <h4>Підготовка</h4>
       <ol>
@@ -747,21 +725,13 @@ function rulesHtml() {
     </ul>
     ${cardGallery}
 
-    <h4>5 shelter recipes</h4>
-    <p>A shelter isn't "any 5 cards" — there are <b>5 different recipes</b>,
-    ranging from 5 to 8 cards each. Whenever you play a resource that
-    doesn't fit an already-started shelter, you choose which recipe to
-    start. The reward is always the same (a random value-1 or value-2
-    shelter card) no matter which recipe you pick — the choice is just
-    about which set best matches what's already in your hand:</p>
-    <ul>${RECIPES.map(r => {
-      const total = Object.values(r.req).reduce((s, n) => s + n, 0);
-      const parts = INGREDIENTS.filter(i => (r.req[i.kind] || 0) > 0).map(i => `${r.req[i.kind]} ${mName(i)}`).join(', ');
-      return `<li><b>${mName(r)}</b> (${total} cards) — ${parts}.</li>`;
-    }).join('')}</ul>
-    <p>Grandpa's Survival Skills always simplifies whichever shelter it's
-    played on down to any 3 different resources, regardless of which
-    recipe that shelter was started with.</p>
+    <h4>Shelter recipe</h4>
+    <p>A shelter is <b>one card of each of the 5 resource kinds</b> (5 cards
+    total). A resource that doesn't fit an already-started shelter starts a
+    new one. Completing it rewards a random value-1 or value-2 shelter
+    card.</p>
+    <p>Grandpa's Survival Skills simplifies whichever shelter it's played on
+    down to any 3 different resources instead of the full set of 5.</p>
 
     <h4>Setup</h4>
     <ol>
@@ -1403,61 +1373,18 @@ function removeFromHand(p, predicate) {
    building elsewhere just opens a second pile rather than being blocked —
    nothing stops working on several burgers in parallel. */
 /* If an existing pile still wants this kind, it just goes there. If not,
-   starting a fresh pile means picking which of the 5 recipes it'll chase
-   — for a human that's a real choice (openRecipeModal), for a bot it
-   defaults straight to the Basic Kit (fastest, safest, no UI to show). */
+   it starts a fresh one — there's only one recipe, so no choice to make. */
 function playIngredientToBuild(cardId) {
   const p = currentPlayer();
   if (G.movesLeft <= 0) return;
   const card = p.hand.find(c => c.id === cardId);
   if (!card || card.type !== 'ingredient') return;
-  const pile = findCompatiblePile(p, card.kind);
-  if (pile) {
-    removeFromHand(p, c => c.id === cardId);
-    addCardToPile(pile, card.kind, card.id, false);
-    G.movesLeft--;
-    addLog(t('playedIngredient', p.name, mName(ingMeta(card.kind))));
-    triggerEffect(ingMeta(card.kind).ic, null, p.id);
-    finishMoveMaybeCompletePile(p, pile);
-    return;
-  }
-  if (p.isBot) {
-    removeFromHand(p, c => c.id === cardId);
-    const newPile = startNewPile(p, 'basic');
-    addCardToPile(newPile, card.kind, card.id, false);
-    G.movesLeft--;
-    addLog(t('playedIngredient', p.name, mName(ingMeta(card.kind))));
-    triggerEffect(ingMeta(card.kind).ic, null, p.id);
-    finishMoveMaybeCompletePile(p, newPile);
-    return;
-  }
-  LOCAL_UI.modal = { type: 'chooseRecipe', pendingCardId: cardId, pendingWildKind: null };
-  renderLocal();
-}
-/* Confirms the recipe picked in the chooseRecipe modal and finally plays
-   whatever card triggered it (a plain resource, or a Wild already
-   assigned a kind via wildPick). */
-function confirmRecipeChoice(recipeId) {
-  const p = currentPlayer();
-  const m = LOCAL_UI.modal;
-  const pile = startNewPile(p, recipeId);
-  if (m.pendingWildKind) {
-    const card = removeFromHand(p, c => c.type === 'action' && c.kind === 'wild');
-    if (!card) return;
-    G.discardPile.push(card);
-    addCardToPile(pile, m.pendingWildKind, card.id, true);
-    G.movesLeft--;
-    addLog(t('playedIngredient', p.name, `${t('wildLabel')} (${mName(ingMeta(m.pendingWildKind))})`));
-    triggerEffect('🔧', null, p.id);
-  } else {
-    const card = removeFromHand(p, c => c.id === m.pendingCardId);
-    if (!card) return;
-    addCardToPile(pile, card.kind, card.id, false);
-    G.movesLeft--;
-    addLog(t('playedIngredient', p.name, mName(ingMeta(card.kind))));
-    triggerEffect(ingMeta(card.kind).ic, null, p.id);
-  }
-  LOCAL_UI.modal = null;
+  const pile = findCompatiblePile(p, card.kind) || startNewPile(p, 'basic');
+  removeFromHand(p, c => c.id === cardId);
+  addCardToPile(pile, card.kind, card.id, false);
+  G.movesLeft--;
+  addLog(t('playedIngredient', p.name, mName(ingMeta(card.kind))));
+  triggerEffect(ingMeta(card.kind).ic, null, p.id);
   finishMoveMaybeCompletePile(p, pile);
 }
 
@@ -1489,33 +1416,16 @@ function openWildModal() {
 function playWild(kind) {
   const p = currentPlayer();
   if (G.movesLeft <= 0) return;
-  const pile = findCompatiblePile(p, kind);
-  if (pile) {
-    const card = removeFromHand(p, c => c.type === 'action' && c.kind === 'wild');
-    if (!card) return;
-    G.discardPile.push(card);
-    addCardToPile(pile, kind, card.id, true);
-    G.movesLeft--;
-    addLog(t('playedIngredient', p.name, `${t('wildLabel')} (${mName(ingMeta(kind))})`));
-    triggerEffect('🔧', null, p.id);
-    LOCAL_UI.modal = null;
-    finishMoveMaybeCompletePile(p, pile);
-    return;
-  }
-  if (p.isBot) {
-    const card = removeFromHand(p, c => c.type === 'action' && c.kind === 'wild');
-    if (!card) return;
-    G.discardPile.push(card);
-    const newPile = startNewPile(p, 'basic');
-    addCardToPile(newPile, kind, card.id, true);
-    G.movesLeft--;
-    addLog(t('playedIngredient', p.name, `${t('wildLabel')} (${mName(ingMeta(kind))})`));
-    triggerEffect('🔧', null, p.id);
-    finishMoveMaybeCompletePile(p, newPile);
-    return;
-  }
-  LOCAL_UI.modal = { type: 'chooseRecipe', pendingCardId: null, pendingWildKind: kind };
-  renderLocal();
+  const pile = findCompatiblePile(p, kind) || startNewPile(p, 'basic');
+  const card = removeFromHand(p, c => c.type === 'action' && c.kind === 'wild');
+  if (!card) return;
+  G.discardPile.push(card);
+  addCardToPile(pile, kind, card.id, true);
+  G.movesLeft--;
+  addLog(t('playedIngredient', p.name, `${t('wildLabel')} (${mName(ingMeta(kind))})`));
+  triggerEffect('🔧', null, p.id);
+  LOCAL_UI.modal = null;
+  finishMoveMaybeCompletePile(p, pile);
 }
 
 /* ---------------- Force Deal ---------------- */
@@ -3182,7 +3092,6 @@ function renderSeat(pl, isActive, x, y, i, isViewerSeat) {
    seats only show it once they've actually started a pile. */
 function renderBuildPile(pile, top) {
   const target = pileTargetCount(pile);
-  const recipeName = pile.grandmaActive ? '' : mName(getRecipe(pile.recipeId));
   const cardsByKind = {};
   pile.cards.forEach(c => (cardsByKind[c.kind] = cardsByKind[c.kind] || []).push(c));
   const slots = INGREDIENTS.map(ing => {
@@ -3199,7 +3108,6 @@ function renderBuildPile(pile, top) {
     return filled + ghosts;
   }).join('');
   return `<div class="build-row-wrap">
-      ${recipeName ? `<div class="build-recipe-name">${escapeHtml(recipeName)}</div>` : ''}
       <div class="build-row">${slots}<div class="build-count">${pile.cards.length}/${target}</div></div>
     </div>`;
 }
@@ -3366,21 +3274,6 @@ function renderModal() {
     return wrapModal(t('wildPickTitle'), `
       <div class="choice-list">
         ${INGREDIENTS.map(i => `<button class="choice-btn" onclick="playWild('${i.kind}')">${i.ic} ${mName(i)}</button>`).join('')}
-      </div>
-    `, true);
-  }
-
-  if (m.type === 'chooseRecipe') {
-    return wrapModal(t('chooseRecipeTitle'), `
-      <div class="choice-list recipe-choice-list">
-        ${RECIPES.map(r => {
-          const total = Object.values(r.req).reduce((s, n) => s + n, 0);
-          const icons = INGREDIENTS.map(i => (r.req[i.kind] || 0) > 0 ? i.ic.repeat(r.req[i.kind]) : '').join(' ');
-          return `<button class="choice-btn recipe-choice-btn" onclick="confirmRecipeChoice('${r.id}')">
-              <span class="recipe-choice-name">${mName(r)} <span class="recipe-choice-count">(${total})</span></span>
-              <span class="recipe-choice-icons">${icons}</span>
-            </button>`;
-        }).join('')}
       </div>
     `, true);
   }
