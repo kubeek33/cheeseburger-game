@@ -175,98 +175,64 @@ const Sfx = (() => {
   };
 })();
 
-/* Soft looping ambient pad (4-chord progression), independent volume/mute from Sfx. */
-/* Upbeat looping bounce: a bass pulse + soft chord pad + a cheerful lead
-   riff, stepped through eighth-notes. The lead alternates between two
-   phrases every full pass through the progression, so the loop has some
-   sense of development instead of repeating one static bar forever. */
+/* Ambient forest theme track, looped with a short crossfade at the seam so the
+   loop point doesn't click or jump. Two <audio> elements alternate: while one
+   is finishing, the other starts from 0 and they fade across each other. */
 const Music = (() => {
   let enabled = localStorage.getItem('cbMusicOn') !== '0';
   let volume = parseFloat(localStorage.getItem('cbMusicVol'));
   if (isNaN(volume)) volume = 0.3;
-  let master = null;
   let playing = false;
-  let timer = null;
-  let stepIndex = 0;
+  let tickTimer = null;
+  let activeIdx = 0;
+  let crossfading = false;
 
-  const BPM = 132;
-  const STEP_DUR = 60 / BPM / 2; // eighth note
-  const STEPS_PER_CHORD = 8;
+  const TRACK_SRC = 'assets/sounds/forest-theme.mp3';
+  const CROSSFADE = 3.5; // seconds of overlap at the loop seam
 
-  // I-V-vi-IV in C major — a classic cheerful, upbeat pop progression.
-  const CHORDS = [
-    { root: 261.63, notes: [261.63, 329.63, 392.00] }, // C
-    { root: 392.00, notes: [392.00, 493.88, 587.33] }, // G
-    { root: 220.00, notes: [220.00, 261.63, 329.63] }, // Am
-    { root: 349.23, notes: [349.23, 440.00, 523.25] }, // F
-  ];
-  const STEPS_PER_PASS = STEPS_PER_CHORD * CHORDS.length;
+  const players = [new Audio(TRACK_SRC), new Audio(TRACK_SRC)];
+  players.forEach(a => { a.preload = 'auto'; a.volume = 0; });
 
-  // Melodic multipliers relative to each chord's root — two alternating
-  // bouncy phrases so every other pass through the progression feels new.
-  const LEAD_A = [1, 1.5, 2, 1.5, 1.25, 1.5, 1, 0];
-  const LEAD_B = [2, 1.5, 1.25, 1.5, 2, 2.5, 2, 1.5];
-
-  function ensureMaster() {
-    const c = getAudioCtx();
-    if (!c) return null;
-    if (!master) {
-      master = c.createGain();
-      master.gain.value = volume;
-      master.connect(c.destination);
-    }
-    return c;
-  }
-
-  function playNote(freq, startTime, dur, type, vol) {
-    const c = _audioCtx;
-    const osc = c.createOscillator();
-    const g = c.createGain();
-    osc.type = type;
-    osc.frequency.value = freq;
-    g.gain.setValueAtTime(0, startTime);
-    g.gain.linearRampToValueAtTime(vol, startTime + 0.015);
-    g.gain.exponentialRampToValueAtTime(0.0008, startTime + dur);
-    osc.connect(g).connect(master);
-    osc.start(startTime);
-    osc.stop(startTime + dur + 0.02);
-  }
-
-  function scheduleStep() {
+  function tick() {
     if (!playing) return;
-    const c = ensureMaster();
-    if (!c) return;
-    const posInPass = stepIndex % STEPS_PER_PASS;
-    const chordIdx = Math.floor(posInPass / STEPS_PER_CHORD);
-    const stepInChord = posInPass % STEPS_PER_CHORD;
-    const pass = Math.floor(stepIndex / STEPS_PER_PASS);
-    const chord = CHORDS[chordIdx];
-    const lead = (pass % 2 === 0) ? LEAD_A : LEAD_B;
-    const startTime = c.currentTime + 0.03;
-
-    if (stepInChord === 0) {
-      chord.notes.forEach(freq => playNote(freq, startTime, STEP_DUR * STEPS_PER_CHORD * 0.95, 'sine', 0.045));
+    const active = players[activeIdx];
+    const other = players[1 - activeIdx];
+    const dur = active.duration;
+    if (!dur || isNaN(dur)) return;
+    const remaining = dur - active.currentTime;
+    if (!crossfading && remaining <= CROSSFADE) {
+      crossfading = true;
+      other.currentTime = 0;
+      other.volume = 0;
+      other.play().catch(() => {});
     }
-    if (stepInChord % 2 === 0) {
-      playNote(chord.root / 2, startTime, STEP_DUR * 0.85, 'triangle', 0.11);
+    if (crossfading) {
+      const progress = Math.max(0, Math.min(1, 1 - remaining / CROSSFADE));
+      active.volume = volume * (1 - progress);
+      other.volume = volume * progress;
+      if (remaining <= 0.05) {
+        active.pause();
+        active.currentTime = 0;
+        activeIdx = 1 - activeIdx;
+        crossfading = false;
+      }
     }
-    const mult = lead[stepInChord];
-    if (mult > 0) playNote(chord.root * mult, startTime, STEP_DUR * 0.8, 'square', 0.055);
-
-    stepIndex++;
-    timer = setTimeout(scheduleStep, STEP_DUR * 1000);
   }
 
   function start() {
     if (playing) return;
-    const c = ensureMaster();
-    if (!c) return;
     playing = true;
-    scheduleStep();
+    const active = players[activeIdx];
+    active.volume = volume;
+    active.currentTime = 0;
+    active.play().catch(() => {});
+    tickTimer = setInterval(tick, 150);
   }
   function stop() {
     playing = false;
-    clearTimeout(timer);
+    crossfading = false;
+    clearInterval(tickTimer);
+    players.forEach(a => a.pause());
   }
 
   return {
@@ -282,7 +248,7 @@ const Music = (() => {
     setVolume(v) {
       volume = Math.max(0, Math.min(1, v));
       localStorage.setItem('cbMusicVol', String(volume));
-      if (master) master.gain.setTargetAtTime(volume, _audioCtx.currentTime, 0.05);
+      if (playing && !crossfading) players[activeIdx].volume = volume;
     },
   };
 })();
@@ -336,6 +302,8 @@ const STRINGS = {
     logHistoryEmpty: 'Поки що подій немає.',
     avatarPickerTitle: '🙂 Обрати аватарку',
     avatarPickerConfirm: 'Зберегти',
+    showMoreBuilds: (n) => `+ ще ${n}`,
+    buildsModalTitle: (name) => `🏕️ Будівлі — ${name}`,
     langToggle: 'EN',
     modeBots: '🤖 Проти ботів',
     modeOnline: '🌐 Онлайн',
@@ -494,6 +462,8 @@ const STRINGS = {
     logHistoryEmpty: 'No events yet.',
     avatarPickerTitle: '🙂 Choose an avatar',
     avatarPickerConfirm: 'Save',
+    showMoreBuilds: (n) => `+ ${n} more`,
+    buildsModalTitle: (name) => `🏕️ Shelters — ${name}`,
     langToggle: 'UA',
     modeBots: '🤖 Vs bots',
     modeOnline: '🌐 Online',
@@ -979,6 +949,7 @@ function deserializeState(data) {
   copy.players = (data.players || []).map(p => Object.assign({}, p, {
     hand: p.hand || [],
     burgers: p.burgers || [],
+    builds: p.builds || [],
   }));
   return copy;
 }
@@ -1067,7 +1038,7 @@ let rulesOpen = false;
    which modal is open, hand view mode, main menu. In online mode the whole
    of G gets pushed to Firebase and broadcast to every connected client, so
    anything that lives on G is effectively shared; this stays purely local. */
-let LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null, logToasts: [], lastLogSeq: undefined, logToastTimer: null, animatedIds: new Set(), logHistoryOpen: false, avatarModal: null };
+let LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null, logToasts: [], lastLogSeq: undefined, logToastTimer: null, animatedIds: new Set(), logHistoryOpen: false, avatarModal: null, buildsModal: null };
 
 function currentPlayer() { return G.players[G.currentPlayerIndex]; }
 function otherPlayers() { return G.players.filter(p => p.id !== currentPlayer().id); }
@@ -1110,7 +1081,7 @@ function newGame(names, options) {
   const deck = shuffle(buildDeck());
   const burgerPile = shuffle(buildBurgerPile());
   const players = names.map((name, i) => ({ id: i, name, avatar: avatars[i] || null, hand: [], burgers: [], builds: [], isBot: !!isBotFlags[i], difficulty }));
-  LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null, logToasts: [], lastLogSeq: undefined, logToastTimer: null, animatedIds: new Set(), logHistoryOpen: false, avatarModal: null };
+  LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null, logToasts: [], lastLogSeq: undefined, logToastTimer: null, animatedIds: new Set(), logHistoryOpen: false, avatarModal: null, buildsModal: null };
   lastEndRenderKey = null;
   G = {
     players, drawPile: deck, discardPile: [], burgerPile,
@@ -1286,7 +1257,6 @@ function applyReaction() {
     case 'gust': {
       const slot = target.burgers.find(b => !b.fly);
       if (slot) slot.fly = true;
-      else target.burgers.push({ id: 'ghost' + Date.now(), value: 0, fly: true });
       break;
     }
     case 'shoplifter': {
@@ -1694,11 +1664,6 @@ function respondTrade(responseCardId) {
   }
   goToPassCover(from.id, 'tradeBack');
 }
-function closeTradeResult() {
-  G.tradeState = null;
-  G.phase = 'game';
-  render();
-}
 
 /* ---------------- Action cards ---------------- */
 
@@ -1867,6 +1832,8 @@ function openGustModal() {
   if (G.movesLeft <= 0) return;
   if (!p.hand.some(c => c.type === 'action' && c.kind === 'gust')) return;
   if (!p.burgers.some(b => b.fly)) return;
+  const eligible = otherPlayers().filter(pl => pl.burgers.length > 0);
+  if (eligible.length === 0) return;
   LOCAL_UI.modal = { type: 'gustTarget' };
   renderLocal();
 }
@@ -1898,6 +1865,16 @@ function openAvatarPicker(playerId) {
   renderLocal();
 }
 function closeAvatarPicker() { LOCAL_UI.avatarModal = null; renderLocal(); }
+
+/* Same ungated pattern as the avatar picker — the table only ever shows one
+   player's most-recently-touched build pile at a glance (the rest would
+   just clutter every seat with a stack of ghost-slot grids); this opens the
+   full list for whichever seat was tapped. */
+function openBuildsModal(playerId) {
+  LOCAL_UI.buildsModal = { playerId };
+  renderLocal();
+}
+function closeBuildsModal() { LOCAL_UI.buildsModal = null; renderLocal(); }
 function setAvatarDraft(value) {
   LOCAL_UI.avatarModal.draft = value.trim().slice(0, 4);
   renderLocal();
@@ -2191,7 +2168,7 @@ function restartSameGame() {
 function exitToSetup() {
   if (ONLINE) onlineLeaveRoom();
   G = null;
-  LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null, logToasts: [], lastLogSeq: undefined, logToastTimer: null, animatedIds: new Set(), logHistoryOpen: false, avatarModal: null };
+  LOCAL_UI = { modal: null, mainMenuOpen: false, handGrouped: false, burgerReveal: null, burgerRevealTimer: null, logToasts: [], lastLogSeq: undefined, logToastTimer: null, animatedIds: new Set(), logHistoryOpen: false, avatarModal: null, buildsModal: null };
   render();
 }
 function menuButtonHtml() {
@@ -2262,6 +2239,8 @@ function render() {
 function renderLocal() {
   doLocalRender();
   if (settingsOpen) app.insertAdjacentHTML('beforeend', renderSettingsModal());
+  if (LOCAL_UI.avatarModal) app.insertAdjacentHTML('beforeend', renderAvatarPickerModal());
+  if (LOCAL_UI.buildsModal) app.insertAdjacentHTML('beforeend', renderBuildsModal());
 }
 
 function doLocalRender() {
@@ -3201,32 +3180,57 @@ function renderSeat(pl, isActive, x, y, i, isViewerSeat) {
    this also shows before you've played a single card (a preview of the
    goal), since otherwise there'd be nothing to look at yet; opponents'
    seats only show it once they've actually started a pile. */
+function renderBuildPile(pile, top) {
+  const target = pileTargetCount(pile);
+  const recipeName = pile.grandmaActive ? '' : mName(getRecipe(pile.recipeId));
+  const cardsByKind = {};
+  pile.cards.forEach(c => (cardsByKind[c.kind] = cardsByKind[c.kind] || []).push(c));
+  const slots = INGREDIENTS.map(ing => {
+    const need = pileRequiredCount(pile, ing.kind);
+    const placed = (cardsByKind[ing.kind] || []).slice(0, need);
+    const filled = placed.map(b => {
+      const isTop = top && top.card.id === b.id;
+      return `<div class="build-chip ${b.isWild ? 'wild' : ''} ${isTop ? 'top' : ''}" title="${escapeHtml(mName(ing))}${b.isWild ? ' (' + t('wildLabel') + ')' : ''}">${ing.ic}</div>`;
+    }).join('');
+    const ghostCount = Math.max(0, need - placed.length);
+    const ghosts = Array.from({ length: ghostCount }, () =>
+      `<div class="build-chip ghost" title="${escapeHtml(mName(ing))}">${ing.ic}</div>`
+    ).join('');
+    return filled + ghosts;
+  }).join('');
+  return `<div class="build-row-wrap">
+      ${recipeName ? `<div class="build-recipe-name">${escapeHtml(recipeName)}</div>` : ''}
+      <div class="build-row">${slots}<div class="build-count">${pile.cards.length}/${target}</div></div>
+    </div>`;
+}
+
+/* Only the most-recently-touched pile renders on the seat itself — with
+   several piles going at once (see comment above) stacking every one of
+   them on the table got cluttered fast. The rest are one tap away via the
+   "+N" button, which opens the full list in renderBuildsModal(). */
 function renderBuildRow(pl) {
   if (!pl.builds.length) return '';
   const top = findTopBuildCard(pl);
-  return pl.builds.map(pile => {
-    const target = pileTargetCount(pile);
-    const recipeName = pile.grandmaActive ? '' : mName(getRecipe(pile.recipeId));
-    const cardsByKind = {};
-    pile.cards.forEach(c => (cardsByKind[c.kind] = cardsByKind[c.kind] || []).push(c));
-    const slots = INGREDIENTS.map(ing => {
-      const need = pileRequiredCount(pile, ing.kind);
-      const placed = (cardsByKind[ing.kind] || []).slice(0, need);
-      const filled = placed.map(b => {
-        const isTop = top && top.card.id === b.id;
-        return `<div class="build-chip ${b.isWild ? 'wild' : ''} ${isTop ? 'top' : ''}" title="${escapeHtml(mName(ing))}${b.isWild ? ' (' + t('wildLabel') + ')' : ''}">${ing.ic}</div>`;
-      }).join('');
-      const ghostCount = Math.max(0, need - placed.length);
-      const ghosts = Array.from({ length: ghostCount }, () =>
-        `<div class="build-chip ghost" title="${escapeHtml(mName(ing))}">${ing.ic}</div>`
-      ).join('');
-      return filled + ghosts;
-    }).join('');
-    return `<div class="build-row-wrap">
-        ${recipeName ? `<div class="build-recipe-name">${escapeHtml(recipeName)}</div>` : ''}
-        <div class="build-row">${slots}<div class="build-count">${pile.cards.length}/${target}</div></div>
-      </div>`;
-  }).join('');
+  const activePile = (top && top.pile) || pl.builds[pl.builds.length - 1];
+  const rest = pl.builds.length - 1;
+  const more = rest > 0
+    ? `<button class="build-more-btn" onclick="openBuildsModal(${pl.id})">${escapeHtml(t('showMoreBuilds', rest))}</button>`
+    : '';
+  return renderBuildPile(activePile, top) + more;
+}
+
+function renderBuildsModal() {
+  const m = LOCAL_UI.buildsModal;
+  if (!m) return '';
+  const pl = G.players.find(p => p.id === m.playerId);
+  if (!pl || !pl.builds.length) { LOCAL_UI.buildsModal = null; return ''; }
+  const top = findTopBuildCard(pl);
+  return wrapModal(t('buildsModalTitle', pl.name), `
+    <div class="builds-modal-list">
+      ${pl.builds.map(pile => renderBuildPile(pile, top)).join('')}
+    </div>
+    <div class="footer-actions"><button class="btn-secondary" onclick="closeBuildsModal()">${t('cancel')}</button></div>
+  `, false);
 }
 
 function renderPendingReveal() {
@@ -3341,9 +3345,10 @@ function renderModal() {
   }
 
   if (m.type === 'gustTarget') {
+    const eligible = otherPlayers().filter(pl => pl.burgers.length > 0);
     return wrapModal(t('gustTargetTitle'), `
       <div class="choice-list">
-        ${otherPlayers().map(pl => `<button class="choice-btn" onclick="playGust(${pl.id})">${escapeHtml(pl.name)}</button>`).join('')}
+        ${eligible.map(pl => `<button class="choice-btn" onclick="playGust(${pl.id})">${t('playerBurgersCount', escapeHtml(pl.name), pl.burgers.length)}</button>`).join('')}
       </div>
     `, true);
   }
